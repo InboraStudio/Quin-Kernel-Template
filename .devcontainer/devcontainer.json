@@ -1,0 +1,19 @@
+{
+    "name": "Quin Kernel Template",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "postCreateCommand": "git submodule update --init --recursive",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "webfreak.debug"
+            ],
+            "settings": {
+                "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json"
+            }
+        }
+    }
+}

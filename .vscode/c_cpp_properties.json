@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "Quin Kernel (x86_64, freestanding)",
+            "compileCommands": "${workspaceFolder}/compile_commands.json",
+            "includePath": [
+                "${workspaceFolder}/kernel",
+                "${workspaceFolder}/kernel/include",
+                "${workspaceFolder}/third_party/limine/include"
+            ],
+            "defines": [],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64",
+            "compilerPath": "/usr/bin/clang",
+            "compilerArgs": [
+                "-target",
+                "x86_64-none-elf",
+                "-ffreestanding",
+                "-mcmodel=kernel",
+                "-mno-red-zone",
+                "-mno-sse",
+                "-mno-sse2",
+                "-mno-mmx"
+            ]
+        }
+    ],
+    "version": 4
+}

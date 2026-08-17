@@ -11,8 +11,11 @@ smoke test.
 
 ## Implemented
 
-- [ ] **Phase 0 — Toolchain & boot skeleton**: Limine boots the kernel via
+- [x] **Phase 0 — Toolchain & boot skeleton**: Limine boots the kernel via
       UEFI, higher-half linking, banner printed over serial + framebuffer.
+      `scripts/build.sh`/`scripts/run.sh` work on a clean checkout;
+      `scripts/run.sh test` verifies the boot banner and a clean
+      `isa-debug-exit` exit headlessly.
 - [ ] **Phase 1 — CPU bring-up**: GDT/TSS, IDT with all 32 exception vectors,
       IOAPIC/LAPIC IRQ routing, panic screen with register dump + stack trace.
 - [ ] **Phase 2 — Memory management**: bitmap PMM, 4-level paging VMM with
@@ -28,8 +31,15 @@ smoke test.
 
 ## Scaffolded but incomplete
 
-Nothing yet — this section fills in as phases land. Expect entries like:
-
+- **Boot-time failure handling** (Phase 0): if the bootloader doesn't
+  grant the requested Limine base revision, `limine_requests_check()`
+  writes a message to serial and halts in an infinite `cli; hlt` loop.
+  This is not the kernel's panic subsystem — there isn't one yet, since a
+  real panic handler needs the IDT and register-dump machinery Phase 1
+  adds. Once that lands, this early check still can't use it (the panic
+  path itself may depend on subsystems not yet initialized this early),
+  so expect it to stay a minimal serial-only fallback by design, not an
+  oversight.
 - **Syscall dispatch** (Phase 5): the `syscall` entry stub saves state and
   returns `-ENOSYS` for every call number. There is no syscall table, no
   argument marshaling convention, and no per-syscall permission model. This

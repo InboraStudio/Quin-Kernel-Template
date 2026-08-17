@@ -1,0 +1,53 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "quin: build",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/build.sh",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "quin: run",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/run.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "quin: run headless smoke test",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/run.sh test",
+            "problemMatcher": []
+        },
+        {
+            "label": "quin: clean",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/clean.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "quin: compile_commands.json",
+            "type": "shell",
+            "command": "make compile_commands.json",
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            "label": "quin: start QEMU for debugging",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/debug.sh --qemu-only",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "."
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "QEMU started",
+                    "endsPattern": "QEMU started"
+                }
+            }
+        }
+    ]
+}

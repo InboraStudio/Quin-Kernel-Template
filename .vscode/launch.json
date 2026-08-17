@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Quin: attach to QEMU (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/quin-kernel.elf",
+            "miDebuggerServerAddress": "localhost:1234",
+            "miDebuggerPath": "gdb",
+            "MIMode": "gdb",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "quin: start QEMU for debugging",
+            "stopAtEntry": true,
+            "setupCommands": [
+                { "text": "break kernel_entry" }
+            ]
+        }
+    ]
+}

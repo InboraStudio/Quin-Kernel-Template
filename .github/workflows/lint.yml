@@ -1,0 +1,43 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: clang-format --check
+        run: |
+          files=$(find kernel tests -name '*.c' -o -name '*.h')
+          clang-format --dry-run --Werror $files
+
+  clang-tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm clang-tidy make curl
+
+      - name: Generate compile_commands.json
+        run: make compile_commands.json
+
+      # clang-tidy's checks weren't written with freestanding kernel code
+      # in mind, so this is informational rather than a hard gate for now
+      # -- see .clang-tidy for what's already tuned out as not applicable
+      # here. Promote to blocking once the check set has settled.
+      - name: clang-tidy
+        continue-on-error: true
+        run: |
+          files=$(find kernel -name '*.c')
+          clang-tidy -p . $files
