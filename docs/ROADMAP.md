@@ -44,8 +44,15 @@ smoke test.
       where EOI'd-after-the-handler timer dispatch permanently starved
       the LAPIC of further ticks once a thread was preempted for the
       first time; fixed by EOI'ing before the handler runs instead.
-- [ ] **Phase 5 — Syscall groundwork**: `syscall`/`sysret` entry stub, ring-3
-      jump path.
+- [x] **Phase 5 — Syscall groundwork**: `SYSCALL`/`SYSRET` entry stub
+      (every call number returns `-ENOSYS`) and a ring-3 jump path.
+      Verified with a demo thread that maps a user page, writes a
+      4-byte program (`syscall; jmp $`), jumps to it, and confirms the
+      syscall round trip via the dispatcher's log line. Building this
+      demo caught a real bug that had shipped since Phase 2 (`vmm.c`
+      never granted intermediate page-table entries the User bit,
+      silently making every mapping supervisor-only) — see
+      `docs/ARCHITECTURE.md`, "Jumping to ring 3".
 - [ ] **Phase 6 — Test harness & polish**: host-side unit tests, QEMU
       `isa-debug-exit` CI smoke test.
 
@@ -60,11 +67,21 @@ smoke test.
   path itself may depend on subsystems not yet initialized this early),
   so expect it to stay a minimal serial-only fallback by design, not an
   oversight.
-- **Syscall dispatch** (Phase 5): the `syscall` entry stub saves state and
-  returns `-ENOSYS` for every call number. There is no syscall table, no
-  argument marshaling convention, and no per-syscall permission model. This
-  is intentional — Quin ends at "you have a safe ring-3 entry point," and
-  your kernel's syscall ABI is your own design decision.
+- **Syscall dispatch** (Phase 5): the `SYSCALL` entry stub reads a call
+  number out of `%rax` and returns `-ENOSYS` unconditionally. There is
+  no syscall table, no argument-marshaling convention beyond what the
+  CPU itself defines, and no per-syscall permission model. This is
+  intentional — Quin ends at "you have a safe ring-3 entry point and a
+  working `SYSCALL` round trip," and your kernel's syscall ABI is your
+  own design decision.
+- **One shared kernel stack for every ring-3 excursion** (Phase 5): both
+  the `SYSCALL` path and `TSS.RSP0` (consulted automatically by any
+  ring3→ring0 interrupt) point at the same single stack, allocated once
+  by `syscall_init`. Safe as long as at most one thread is ever in ring
+  3 at a time — true for this template's one demo thread. A fork adding
+  real userspace processes needs a kernel stack per thread here (swapped
+  into `TSS.RSP0` on every context switch, same as everything else
+  per-thread), not one global.
 - **Double-fault safety net** (Phase 1): vector 8 (#DF) is a normal IDT
   gate like any other, with no IST (Interrupt Stack Table) entry, so a
   double fault caused by kernel stack overflow runs its handler on the

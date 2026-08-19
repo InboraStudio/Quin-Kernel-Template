@@ -9,6 +9,7 @@
 #include "arch/x86_64/cpu/io.h"
 #include "arch/x86_64/cpu/ioapic.h"
 #include "arch/x86_64/cpu/lapic.h"
+#include "arch/x86_64/cpu/syscall.h"
 #include "arch/x86_64/mm/vmm.h"
 #include "drivers/framebuffer/framebuffer.h"
 #include "drivers/keyboard/keyboard.h"
@@ -41,6 +42,46 @@ static void demo_thread(void *arg) {
     for (;;) {
         __asm__ volatile("hlt");
     }
+}
+
+/* This kernel has no per-process address spaces yet (kernel/arch/x86_64/mm/vmm.c
+ * extends one shared set of page tables), so a "user" mapping is just as
+ * directly addressable from kernel code as any other pointer -- no HHDM
+ * translation needed to write the demo program into it below. Fixed,
+ * arbitrarily-chosen low addresses, picked only to stay well clear of
+ * the kernel image and every other reserved range this template uses. */
+#define USER_CODE_VADDR 0x400000ULL
+#define USER_STACK_VADDR 0x500000ULL
+
+/* Demonstrates the ring-3 jump and a full SYSCALL round trip: maps one
+ * user-accessible code page and one stack page, writes a 4-byte program
+ * (`syscall; jmp $`), and jumps to it. The syscall_dispatch log line
+ * (kernel/arch/x86_64/cpu/syscall.c) is the proof the round trip
+ * actually happened; the jmp-to-self afterward is a deliberate dead end
+ * -- there's no thread-exit path yet (kernel/sched/thread.c), same as
+ * the round-robin demo threads above. */
+static void ring3_demo_thread(void *arg) {
+    (void)arg;
+
+    uint64_t code_phys = pmm_alloc_frame();
+    uint64_t stack_phys = pmm_alloc_frame();
+    if (code_phys == 0 || stack_phys == 0 ||
+        !vmm_map(USER_CODE_VADDR, code_phys, VMM_USER | VMM_WRITABLE) ||
+        !vmm_map(USER_STACK_VADDR, stack_phys, VMM_USER | VMM_WRITABLE | VMM_NO_EXECUTE)) {
+        log_warn("ring3 demo: failed to set up the demo mapping, skipping");
+        for (;;) {
+            __asm__ volatile("hlt");
+        }
+    }
+
+    uint8_t *code = (uint8_t *)(uintptr_t)USER_CODE_VADDR;
+    code[0] = 0x0f;
+    code[1] = 0x05; /* syscall */
+    code[2] = 0xeb;
+    code[3] = 0xfe; /* jmp $   */
+
+    log_info("ring3 demo: jumping to ring 3 at 0x%lx", USER_CODE_VADDR);
+    jump_to_ring3(USER_CODE_VADDR, USER_STACK_VADDR + PAGE_SIZE);
 }
 
 static const char *const banner =
@@ -104,6 +145,8 @@ void kmain(void) {
     keyboard_init();
     ioapic_set_irq(KEYBOARD_IRQ, KEYBOARD_VECTOR, (uint8_t)lapic_get_id(), false);
 
+    syscall_init();
+
     io_enable_interrupts();
 
     log_info("Quin Kernel Template -- Inbora Studio");
@@ -112,6 +155,7 @@ void kmain(void) {
     thread_create(demo_thread, "A");
     thread_create(demo_thread, "B");
     thread_create(demo_thread, "C");
+    thread_create(ring3_demo_thread, NULL);
     for (int i = 0; i < DEMO_THREAD_ITERATIONS; i++) {
         sched_yield();
     }

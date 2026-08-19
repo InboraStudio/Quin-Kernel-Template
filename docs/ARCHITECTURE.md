@@ -444,4 +444,94 @@ of the scheduler skeleton actually working.
 
 ## Syscall ABI (Phase 5)
 
-Not yet implemented — see `docs/ROADMAP.md`.
+This is where the template ends and your kernel begins. Everything here
+is deliberately minimal scaffolding, not a finished syscall ABI — see
+`docs/ROADMAP.md`.
+
+### SYSCALL/SYSRET
+
+`kernel/arch/x86_64/cpu/syscall.c` + `syscall_entry.S`. `SYSCALL` and
+`SYSRET` derive the selectors they load from a single `STAR` MSR field
+each, using fixed offsets from a base value (SDM Vol. 2B) — which is
+exactly why `kernel/arch/x86_64/cpu/gdt.c` orders the GDT the way it
+does (see "GDT" above): kernel code/data adjacent for `SYSCALL`'s
+formula, user data immediately before user code for `SYSRET`'s.
+
+Unlike an interrupt gate, `SYSCALL` doesn't consult the TSS or change
+`RSP` at all — landing in `syscall_entry` means `%rsp` still points at
+whatever user stack was live when `syscall` executed, so the entry
+stub's first job is getting off of it onto a known-good kernel stack
+(a global, set once by `syscall_init`) before touching memory for
+anything else. `IA32_FMASK` clears `IF` and `TF` on entry, closing the
+window between that instruction and the stack swap where an interrupt
+landing on the still-user stack would be dangerous.
+
+The dispatcher (`syscall_dispatch`) reads a call number out of `%rax`
+and returns `-ENOSYS` unconditionally — there is no syscall table, no
+argument-marshaling convention beyond what the CPU itself defines
+(arguments would conventionally arrive in `%rdi`/`%rsi`/`%rdx`/`%r10`/
+`%r8`/`%r9`, following the same convention Linux uses and for the same
+reason: `%rcx` is unavailable, since `SYSCALL` itself clobbers it), and
+no permission model. Designing that is the actual work of building a
+kernel on this template, not something the template can decide for you.
+
+### Jumping to ring 3
+
+`jump_to_ring3` (`syscall_entry.S`) builds a five-item `iretq` frame by
+hand (`SS`, `RSP`, `RFLAGS`, `CS`, `RIP`, pushed in that order) and
+`iretq`s — the standard technique for an *initial* transition into a
+lower privilege level, as opposed to `SYSRET`, which only makes sense
+returning from a `SYSCALL` that's already in flight (it expects its
+return context in `%rcx`/`%r11`, which nothing has set up yet on a
+first jump).
+
+This relies on a detail that's easy to get backwards: `iretq` decides
+*at execution time*, from the CS value it's about to load, whether to
+also pop `RSP`/`SS` — it's not something the interrupt/exception stub
+needs to branch on in software. That means `isr_common_stub`
+(`kernel/arch/x86_64/cpu/isr_stubs.S`), written back in Phase 1 for an
+exclusively-ring-0 kernel, already handles a ring-3-originated exception
+correctly without any changes: the CPU pushes the extra two items on
+its own, and `iretq` pops exactly what was pushed. The one piece that
+*did* need attention was `TSS.RSP0` (Phase 1's GDT/TSS work left it
+unset, since nothing needed it yet) — a ring3→ring0 transition through
+any interrupt gate loads `RSP` from it automatically (SDM Vol. 3A, 8.5),
+so `syscall_init` allocates a dedicated stack and calls
+`gdt_set_kernel_stack` before anything can reach ring 3. It's shared
+with the `SYSCALL` path's own kernel stack; safe as long as at most one
+ring-3 excursion is ever in flight, true for this template's one demo
+thread and not something to rely on with more than one — a fork adding
+real userspace processes needs a kernel stack per thread here, not one
+global.
+
+The demo thread in `kmain` maps one user-accessible code page and one
+stack page — directly writable from kernel code, since this template
+has no per-process address spaces yet, just one shared set of page
+tables everything (kernel and this one "user" mapping alike) lives in —
+writes a 4-byte program (`syscall; jmp $`), and jumps to it. The
+`syscall_dispatch` log line is the proof the full round trip actually
+happened. Verified further during development, temporarily, by swapping
+the trailing `jmp $` for `int3`: rather than reaching the `#BP` handler,
+it produced a clean `#GP` (error code identifying IDT vector 3) with
+`CS=0x0023` in the panic dump. That's correct, not a bug — `int3` and
+`into`, despite being hardware exceptions, are *software-triggered* (a
+dedicated one-byte opcode) and so are subject to the normal CPL-vs-gate-DPL
+check like any `int n`, unlike a genuinely hardware-generated exception
+(`#PF`, `#GP` itself, `#UD`, ...), which always gets through regardless
+of CPL. Since every IDT gate here has DPL 0 (`kernel/arch/x86_64/cpu/idt.c`),
+ring-3 code can't invoke `int3` directly — which is exactly what
+happened, and the resulting `#GP` still confirmed the real thing this
+was testing: a ring-3-originated exception's five-item frame unwinds
+correctly.
+
+A real bug *did* surface building this demo, in code that had shipped
+two phases earlier: `kernel/arch/x86_64/mm/vmm.c`'s `ensure_next_level`
+created new intermediate page-table entries as Present+Writable only,
+never Present+Writable+**User**. Since x86 ANDs permissions across all
+four paging levels, every mapping this kernel had ever made was
+*already* effectively supervisor-only regardless of what a leaf PTE
+said — invisible until Phase 5 tried to execute from a page whose leaf
+genuinely did say `User=1`, and got a protection fault anyway. Fixed by
+always setting `User` on intermediate entries too, same reasoning as
+the pre-existing Writable choice: a leaf's own flags are what should
+actually govern access, not an accidentally-more-restrictive ancestor.

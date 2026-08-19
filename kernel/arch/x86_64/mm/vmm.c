@@ -70,17 +70,22 @@ static void page_table_indices(uint64_t virt, unsigned *pml4_i, unsigned *pdpt_i
     *pt_i = (unsigned)((virt >> 12) & (PAGE_TABLE_ENTRIES - 1));
 }
 
-/* Present intermediate entries are always Writable so that a leaf's own
- * Writable/NX flags are what actually govern access -- the CPU ANDs
- * permissions across all four levels, so a restrictive intermediate
- * entry would silently override a more permissive leaf. */
+/* Present intermediate entries are always Writable and User so that a
+ * leaf's own Writable/User/NX flags are what actually govern access --
+ * the CPU ANDs permissions across all four levels, so a restrictive
+ * intermediate entry silently overrides a more permissive leaf. This is
+ * not a hypothetical: an earlier version left User unset here, and every
+ * mapping stayed effectively supervisor-only regardless of the leaf's
+ * own flags, which nothing caught until Phase 5's ring-3 demo tried to
+ * execute from a page whose leaf PTE genuinely did say User=1 -- see
+ * docs/ROADMAP.md. */
 static uint64_t *ensure_next_level(uint64_t *table, unsigned index) {
     if (!(table[index] & PTE_PRESENT)) {
         uint64_t new_table_phys = pmm_alloc_frame();
         if (new_table_phys == 0) {
             return NULL;
         }
-        table[index] = new_table_phys | PTE_PRESENT | PTE_WRITABLE;
+        table[index] = new_table_phys | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
     }
     return phys_to_virt_table(table[index] & PTE_ADDR_MASK);
 }
