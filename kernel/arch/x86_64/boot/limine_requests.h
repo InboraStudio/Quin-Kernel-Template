@@ -31,4 +31,9 @@ uint64_t boot_get_hhdm_offset(void);
 bool boot_get_memmap(struct boot_memmap *out);
 bool boot_get_kernel_address(struct boot_kernel_address *out);
 
+/* Already-HHDM-mapped, directly dereferenceable pointer to the ACPI
+ * RSDP (see the base-revision comment in limine_requests.c for why this
+ * kernel requests a revision where that's guaranteed). */
+bool boot_get_rsdp(void **out);
+
 #endif

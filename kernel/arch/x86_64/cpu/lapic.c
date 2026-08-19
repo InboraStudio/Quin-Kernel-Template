@@ -19,6 +19,16 @@
 #define LAPIC_REG_LVT_LINT0 0x350
 #define LAPIC_REG_LVT_LINT1 0x360
 #define LAPIC_REG_LVT_ERROR 0x370
+#define LAPIC_REG_INITIAL_COUNT 0x380
+#define LAPIC_REG_CURRENT_COUNT 0x390
+#define LAPIC_REG_DIVIDE_CONFIG 0x3e0
+
+#define LAPIC_TIMER_PERIODIC (1U << 17)
+/* SDM Vol. 3A, 11.5.4, Table 11-11: 0b011 selects divide-by-16 in the
+ * Divide Configuration Register's non-contiguous 3-bit encoding. Any
+ * divisor works; 16 keeps the initial-count value lapic_timer.c computes
+ * comfortably inside 32 bits at realistic bus frequencies. */
+#define LAPIC_TIMER_DIVIDE_16 0x3
 
 #define LAPIC_SVR_SOFTWARE_ENABLE (1U << 8)
 /* Bits 0-3 of the spurious vector are hardwired to 1 on some CPUs, so by
@@ -60,4 +70,27 @@ void lapic_send_eoi(void) {
 
 uint32_t lapic_get_id(void) {
     return lapic_read(LAPIC_REG_ID) >> 24;
+}
+
+void lapic_timer_set_lvt(uint8_t vector, bool periodic, bool masked) {
+    uint32_t value = vector;
+    if (periodic) {
+        value |= LAPIC_TIMER_PERIODIC;
+    }
+    if (masked) {
+        value |= LAPIC_LVT_MASKED;
+    }
+    lapic_write(LAPIC_REG_LVT_TIMER, value);
+}
+
+void lapic_timer_set_divide_16(void) {
+    lapic_write(LAPIC_REG_DIVIDE_CONFIG, LAPIC_TIMER_DIVIDE_16);
+}
+
+void lapic_timer_set_initial_count(uint32_t count) {
+    lapic_write(LAPIC_REG_INITIAL_COUNT, count);
+}
+
+uint32_t lapic_timer_get_current_count(void) {
+    return lapic_read(LAPIC_REG_CURRENT_COUNT);
 }

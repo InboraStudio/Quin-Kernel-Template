@@ -3,13 +3,11 @@
 #include "arch/x86_64/mm/vmm.h"
 #include "kernel.h"
 
-/* OSDev Wiki: https://wiki.osdev.org/IOAPIC. 0xfec00000 is the
- * conventional fixed IOAPIC base every x86 chipset (including QEMU's
- * q35/i440fx) uses by default; a system with a non-default placement or
- * multiple IOAPICs would need this read from the ACPI MADT instead. That
- * parsing is a Phase 3 concern (kernel/acpi) -- this is a documented
- * simplification, not an oversight, until it lands. */
-#define IOAPIC_PHYS_BASE 0xfec00000ULL
+/* OSDev Wiki: https://wiki.osdev.org/IOAPIC. The caller (kmain, via
+ * kernel/acpi/madt.c) is responsible for supplying the actual base
+ * address; this file no longer hardcodes the conventional 0xfec00000
+ * default itself now that MADT parsing exists to find the real one --
+ * see kmain's fallback logic if the MADT is unavailable. */
 
 #define IOAPIC_REG_SELECT 0x00
 #define IOAPIC_REG_WINDOW 0x10
@@ -31,8 +29,8 @@ static void ioapic_write(uint32_t reg, uint32_t value) {
     ioapic_base[IOAPIC_REG_WINDOW / 4] = value;
 }
 
-void ioapic_init(void) {
-    ioapic_base = (volatile uint32_t *)vmm_map_mmio(IOAPIC_PHYS_BASE);
+void ioapic_init(uint64_t phys_base) {
+    ioapic_base = (volatile uint32_t *)vmm_map_mmio(phys_base);
 
     uint32_t version = ioapic_read(IOAPIC_REG_VERSION);
     uint32_t max_entry = (version >> 16) & 0xff;

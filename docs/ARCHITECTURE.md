@@ -153,11 +153,11 @@ Both are mapped with `vmm_map_mmio` (Phase 2's VMM), which is why
 minimal standalone page-table editor (since removed) mapped these two
 pages before any general-purpose VMM existed.
 
-The IOAPIC's base address is currently hardcoded to the conventional
-`0xfec00000` default every common chipset (including QEMU's q35/i440fx)
-uses. A system with a non-default placement needs the ACPI MADT, which
-is Phase 3 — `ioapic_init` documents this as a known simplification, not
-an oversight.
+`ioapic_init` takes its base address as a parameter rather than
+hardcoding it; `kmain` supplies whatever `kernel/acpi/madt.c` finds in
+the MADT (Phase 3), falling back to the conventional `0xfec00000`
+default (correct for QEMU's q35/i440fx and virtually every real
+chipset) only if the MADT is unavailable or has no IOAPIC entry.
 
 ### Panic
 
@@ -268,7 +268,87 @@ read than a production design.
 
 ## Platform services (Phase 3)
 
-Not yet implemented — see `docs/ROADMAP.md`.
+### ACPI
+
+`kernel/acpi/acpi.c`. Validates the RSDP, walks to the XSDT (falling
+back to the RSDT on the ACPI 1.0 systems this template's QEMU/OVMF
+target never actually presents, but the fallback is cheap so it's
+there), and exposes `acpi_find_table` by 4-character signature. Every
+table's checksum (a sum-of-bytes-equals-zero over the whole table,
+including tables found via `acpi_find_table`) is verified before use;
+a mismatch panics rather than trusting corrupt firmware data.
+
+This is why `kernel/arch/x86_64/boot/limine_requests.c` requests base
+revision 4, not 3 (where Phase 1/2 started): revision 4 is the first
+revision that *guarantees* the RSDP and every table it leads to are
+actually mapped into HHDM (via ACPI-reclaimable, ACPI-NVS, or the
+Reserved-Mapped memmap type) — under revision 3, ACPI tables aren't
+reliably reachable through HHDM at all. Revision 4 is a strict superset
+of revision 3's guarantees, so the bump didn't require touching
+anything Phase 1/2 already built.
+
+`kernel/acpi/madt.c` parses the MADT ("APIC" table) for two things: the
+count of enabled Local APIC entries (informational — logged at boot,
+not yet used for anything, since SMP is out of scope) and the first
+IOAPIC entry's base address. `kmain` passes that address to
+`ioapic_init`, falling back to the conventional `0xfec00000` default if
+the MADT is missing or has no IOAPIC entry — the same default
+`ioapic_init` used to hardcode unconditionally back in Phase 1.
+
+No FADT/DSDT/AML parsing — that's a fundamentally different (and much
+larger) undertaking than fixed-layout table parsing; see `docs/ROADMAP.md`.
+
+### LAPIC timer
+
+`kernel/arch/x86_64/cpu/lapic_timer.c` calibrates the LAPIC timer's
+actual tick frequency by counting its ticks across a known-length delay
+from the legacy PIT — specifically PIT channel 2, gated through port
+`0x61`, whose output is directly pollable without needing IRQ0 wired up
+at all (unlike channel 0, which only reaches the IOAPIC). Once
+calibrated, the timer is reprogrammed for periodic interrupts at
+`TIMER_FREQUENCY_HZ` (1000 Hz — `kernel/drivers/timer/timer.h`).
+
+`kernel/drivers/timer/timer.c` is the arch-independent side: it owns the
+tick counter and the interrupt handler that increments it, and calls
+into `lapic_timer_calibrate_and_start` only to actually program the
+hardware. That split mirrors `kernel/include/boot_info.h`'s
+arch-independent/arch-specific boundary — a hypothetical aarch64 port
+would implement `kernel/arch/aarch64/cpu/generic_timer.c` and leave
+`kernel/drivers/timer/timer.c` untouched.
+
+### Leveled logger
+
+`kernel/lib/log.c`. `log_debug`/`log_info`/`log_warn` all funnel through
+`log_write`, which writes a `[LEVEL] ` prefix (color-coded on the
+framebuffer; serial has no color) followed by the formatted message to
+both serial and the framebuffer console — the same dual-sink pattern
+`panic.c` uses, just with a level-dependent color instead of always red.
+`log_set_min_level` filters below a threshold; defaults to `LOG_LEVEL_DEBUG`
+(show everything), appropriate for a template kernel where visibility
+into what's happening matters more than quiet logs.
+
+Deliberately not the same code path as `panic()`: a panic needs a
+register dump and a guaranteed-halts-after semantics that routine
+logging shouldn't carry, so the two stay separate despite the visual
+similarity in their `[TAG]` output format.
+
+### PS/2 keyboard
+
+`kernel/drivers/keyboard/keyboard.c`. Reads Scan Code Set 1 (the PS/2
+controller's power-on default) from port `0x60` on IRQ1, tracks Shift
+state, and translates through a fixed lookup table covering the
+alphanumeric block, punctuation, space, enter, tab, and backspace —
+not F-keys, the numpad, arrow keys, or the `0xE0`-prefixed extended
+scancodes. Translated characters land in a small circular buffer;
+`keyboard_read_char` is non-blocking and returns `'\0'` when it's
+empty. No 8042 controller initialization sequence — every checked QEMU
+machine type has it already enabled by firmware default, and a
+from-scratch controller init is a well-scoped addition for a fork
+targeting real hardware, not something this template needs to carry.
+
+Verified with QEMU's monitor `sendkey` command (including `shift-1`
+producing `!`, confirming the modifier tracking) before removing the
+temporary echo-to-serial loop used to check it.
 
 ## Scheduling (Phase 4)
 

@@ -27,8 +27,11 @@ smoke test.
       by exercising `kmalloc`/`kfree` (including the lazy-fault path) and
       by deliberately writing past a guarded allocation and confirming
       the panic fires with `CR2` pointing at the guard page.
-- [ ] **Phase 3 — Platform services**: ACPI table parsing, LAPIC timer
-      calibration, leveled logger, PS/2 keyboard driver.
+- [x] **Phase 3 — Platform services**: ACPI table parsing (RSDP → XSDT →
+      MADT, with an RSDT fallback), LAPIC timer calibrated against the
+      PIT, a leveled logger, and a PS/2 keyboard driver. Verified with
+      QEMU's monitor `sendkey` (including a shifted key) echoed to
+      serial before removing the temporary test loop.
 - [ ] **Phase 4 — Concurrency skeleton**: kernel threads, round-robin
       scheduler, spinlocks.
 - [ ] **Phase 5 — Syscall groundwork**: `syscall`/`sysret` entry stub, ring-3
@@ -62,11 +65,6 @@ smoke test.
   additionally pushes on an IST-induced stack switch (see
   `docs/ARCHITECTURE.md`, "IDT and interrupt dispatch") — deferred rather
   than risking getting that interaction subtly wrong.
-- **IOAPIC base address** (Phase 1): hardcoded to the conventional
-  `0xfec00000` default (see `docs/ARCHITECTURE.md`) instead of read from
-  the ACPI MADT, since ACPI parsing is a Phase 3 deliverable. Correct for
-  QEMU's q35/i440fx and virtually every real chipset, wrong for a system
-  with a non-default IOAPIC placement.
 - **Panic stack traces have no symbol resolution** (Phase 1): frame
   addresses are printed raw; there's no kernel-side symbol table to turn
   them into function names. Cross-reference against
@@ -90,6 +88,24 @@ smoke test.
   growth path (extending the reserved virtual range, or falling back to
   a second region). Fine for a template kernel's own allocation volume,
   a real limitation for anything heap-heavy.
+- **No FADT/DSDT/AML parsing** (Phase 3): `kernel/acpi` reads fixed-layout
+  tables (RSDP, RSDT/XSDT, MADT) only. The FADT and AML (ACPI Machine
+  Language, inside the DSDT/SSDT) are a fundamentally different and much
+  larger undertaking — a bytecode interpreter, not a struct-layout parser
+  — and nothing this template does needs them (no power management, no
+  device enumeration beyond the MADT's fixed entries).
+- **PS/2 keyboard driver has no 8042 controller initialization** (Phase 3):
+  `keyboard_init` assumes the controller and its first port are already
+  enabled, which every checked QEMU machine type's firmware does by
+  default. A driver aiming at real, potentially-uninitialized hardware
+  needs the actual init sequence (self-test, port enable, ACK'd `0xff`
+  reset) first.
+- **PS/2 keyboard scancode coverage is partial** (Phase 3): the
+  translation table (`kernel/drivers/keyboard/keyboard.c`) covers the
+  alphanumeric block, punctuation, space, enter, tab, and backspace.
+  F-keys, arrows, the numpad, and the `0xE0`-prefixed extended scancodes
+  (right Ctrl/Alt, the cursor cluster, ...) are silently dropped, and
+  Caps Lock isn't tracked (only Shift is).
 - **SMP**: `kernel/arch/x86_64/cpu` brings up the boot processor (BSP) only.
   Application processor (AP) bring-up via the MADT's LAPIC entries, the
   INIT-SIPI-SIPI sequence, and per-CPU scheduler runqueues are not

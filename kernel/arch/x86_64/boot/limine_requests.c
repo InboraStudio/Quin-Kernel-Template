@@ -6,15 +6,20 @@
 #include "drivers/serial/serial.h"
 #include "kernel.h"
 
-/* Base revision 3: restrictive HHDM (only usable/bootloader-reclaimable/
- * executable-and-modules/framebuffer regions get mapped, instead of a blind
- * identity map of the first 4GiB), and the RSDP is handed back as a
- * physical address. See third_party/limine/PROTOCOL.md, "Base Revision
- * Changes Summary". Revisions 4+ add guarantees (LAPIC/IOAPIC masked state,
- * stricter cr0/cr4/EFER) we don't currently depend on; revision 3 is the
- * lowest revision with the HHDM behavior kernel/mm's design assumes. */
+/* Base revision 4: restrictive HHDM (only usable/bootloader-reclaimable/
+ * executable-and-modules/framebuffer/ACPI/reserved-mapped regions get
+ * mapped, instead of a blind identity map of the first 4GiB), and --
+ * critically for kernel/acpi -- the RSDP address is virtual (HHDM), and
+ * revision 4 is the first revision that *guarantees* the RSDP, RSDT/XSDT,
+ * and every table they point to are actually mapped into HHDM at all
+ * (via ACPI-reclaimable, ACPI-NVS, or the new Reserved-Mapped memmap
+ * type). Started this kernel on revision 3 during Phase 1/2, before
+ * anything needed ACPI; revision 4 is a strict superset of what 3
+ * guarantees, so bumping it here didn't require touching any earlier
+ * code. See third_party/limine/PROTOCOL.md, "Base Revision Changes
+ * Summary". */
 __attribute__((used, section(".limine_requests"))) static volatile uint64_t
-    limine_base_revision[] = LIMINE_BASE_REVISION(3);
+    limine_base_revision[] = LIMINE_BASE_REVISION(4);
 
 __attribute__((used,
                 section(".limine_requests_start_marker"))) static volatile uint64_t
@@ -53,9 +58,16 @@ __attribute__((used,
         .response = NULL,
 };
 
+__attribute__((used, section(".limine_requests"))) static volatile struct limine_rsdp_request
+    rsdp_request = {
+        .id = LIMINE_RSDP_REQUEST_ID,
+        .revision = 0,
+        .response = NULL,
+};
+
 void limine_requests_check(void) {
     if (!LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision)) {
-        serial_write("[PANIC] limine: bootloader does not support base revision 3\n");
+        serial_write("[PANIC] limine: bootloader does not support base revision 4\n");
         for (;;) {
             __asm__ volatile("cli; hlt");
         }
@@ -127,5 +139,18 @@ bool boot_get_kernel_address(struct boot_kernel_address *out) {
     }
     out->physical_base = response->physical_base;
     out->virtual_base = response->virtual_base;
+    return true;
+}
+
+bool boot_get_rsdp(void **out) {
+    struct limine_rsdp_response *response = rsdp_request.response;
+    if (response == NULL) {
+        return false;
+    }
+    /* Already HHDM-mapped and directly dereferenceable at base revision
+     * 4 (physical only at revision 3 -- see the base-revision comment
+     * above), so unlike boot_get_kernel_address there's no separate
+     * physical field to translate. */
+    *out = response->address;
     return true;
 }
