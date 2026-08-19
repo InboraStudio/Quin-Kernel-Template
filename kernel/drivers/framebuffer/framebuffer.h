@@ -22,6 +22,11 @@
  * must fall back to serial-only output in that case. */
 bool fb_init(const struct boot_framebuffer *info);
 
+/* True once fb_init has succeeded. panic.c checks this before writing to
+ * the console, since a panic can happen before (or instead of) fb_init
+ * ever running. */
+bool fb_is_available(void);
+
 void fb_clear(uint32_t color_rgb);
 
 /* Text console over the raw framebuffer: tracks a cursor in character

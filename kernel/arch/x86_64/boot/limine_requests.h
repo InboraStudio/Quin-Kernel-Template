@@ -2,6 +2,7 @@
 #define ARCH_X86_64_BOOT_LIMINE_REQUESTS_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "boot_info.h"
 
@@ -18,5 +19,16 @@ void limine_requests_check(void);
 
 /* Returns false if no framebuffer was made available. */
 bool boot_get_framebuffer(struct boot_framebuffer *out);
+
+/* Offset added to a physical address to reach its Higher Half Direct Map
+ * alias. Always succeeds -- the bootloader is required to answer this
+ * request. */
+uint64_t boot_get_hhdm_offset(void);
+
+/* Returns false if the bootloader didn't answer (it always does for the
+ * revision this kernel requests, but every boot_get_* here fails
+ * explicitly rather than assuming). */
+bool boot_get_memmap(struct boot_memmap *out);
+bool boot_get_kernel_address(struct boot_kernel_address *out);
 
 #endif

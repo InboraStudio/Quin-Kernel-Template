@@ -42,7 +42,17 @@ CFLAGS := \
 	-mno-mmx \
 	-mno-sse \
 	-mno-sse2 \
+	-fno-omit-frame-pointer \
 	-Wall -Wextra -Werror -Wshadow -Wconversion
+
+# The panic handler's stack trace (kernel/arch/x86_64/cpu/panic.c) walks
+# the RBP chain, which only exists if frame pointers aren't optimized
+# away -- not part of the flag list above, but required for that Phase 1
+# feature to work at all.
+ASFLAGS := \
+	-target $(TARGET) \
+	-march=x86-64 \
+	-Wall -Werror
 
 # -nostdinc keeps the host's glibc headers (/usr/include) completely out
 # of reach -- without it, a plain #include "string.h" from a subdirectory
@@ -68,9 +78,11 @@ LDFLAGS := \
 	--no-dynamic-linker \
 	-nostdlib
 
-SRCS := $(shell find kernel -name '*.c' | LC_ALL=C sort)
-OBJS := $(patsubst kernel/%.c,build/kernel-obj/%.o,$(SRCS))
-DEPS := $(OBJS:.o=.d)
+CSRCS := $(shell find kernel -name '*.c' | LC_ALL=C sort)
+ASSRCS := $(shell find kernel -name '*.S' | LC_ALL=C sort)
+OBJS := $(patsubst kernel/%.c,build/kernel-obj/%.o,$(CSRCS)) \
+        $(patsubst kernel/%.S,build/kernel-obj/%.o,$(ASSRCS))
+DEPS := $(patsubst kernel/%.c,build/kernel-obj/%.d,$(CSRCS))
 
 .PHONY: all
 all: $(KERNEL)
@@ -82,6 +94,10 @@ $(KERNEL): $(OBJS) kernel/arch/x86_64/linker.ld
 build/kernel-obj/%.o: kernel/%.c submodules
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -MJ $@.json -c $< -o $@
+
+build/kernel-obj/%.o: kernel/%.S submodules
+	@mkdir -p $(dir $@)
+	$(CC) $(ASFLAGS) $(CPPFLAGS) -c $< -o $@
 
 -include $(DEPS)
 

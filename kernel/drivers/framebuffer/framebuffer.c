@@ -7,6 +7,7 @@
 #define CELL_H 8
 
 static struct boot_framebuffer fb;
+static bool fb_ready;
 static uint32_t bytes_per_pixel;
 static uint32_t console_cols;
 static uint32_t console_rows;
@@ -24,7 +25,12 @@ bool fb_init(const struct boot_framebuffer *info) {
     console_rows = (uint32_t)(fb.height / CELL_H);
     cursor_col = 0;
     cursor_row = 0;
+    fb_ready = true;
     return true;
+}
+
+bool fb_is_available(void) {
+    return fb_ready;
 }
 
 /* Scales an 8-bit RGB component to whatever width the framebuffer's mode

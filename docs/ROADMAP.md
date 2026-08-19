@@ -16,8 +16,11 @@ smoke test.
       `scripts/build.sh`/`scripts/run.sh` work on a clean checkout;
       `scripts/run.sh test` verifies the boot banner and a clean
       `isa-debug-exit` exit headlessly.
-- [ ] **Phase 1 — CPU bring-up**: GDT/TSS, IDT with all 32 exception vectors,
-      IOAPIC/LAPIC IRQ routing, panic screen with register dump + stack trace.
+- [x] **Phase 1 — CPU bring-up**: GDT/TSS, IDT with all 32 exception vectors,
+      IOAPIC/LAPIC IRQ routing (no legacy 8259 PIC), panic screen with
+      register dump + stack trace. Verified by deliberately triggering
+      `#BP` (`int3`) and confirming the panic screen renders correctly on
+      both serial and framebuffer before removing the trigger.
 - [ ] **Phase 2 — Memory management**: bitmap PMM, 4-level paging VMM with
       guard pages, kernel heap, page fault handler.
 - [ ] **Phase 3 — Platform services**: ACPI table parsing, LAPIC timer
@@ -45,6 +48,29 @@ smoke test.
   argument marshaling convention, and no per-syscall permission model. This
   is intentional — Quin ends at "you have a safe ring-3 entry point," and
   your kernel's syscall ABI is your own design decision.
+- **Double-fault safety net** (Phase 1): vector 8 (#DF) is a normal IDT
+  gate like any other, with no IST (Interrupt Stack Table) entry, so a
+  double fault caused by kernel stack overflow runs its handler on the
+  same already-overflowed stack — which can fault again and triple-fault
+  the machine instead of producing a clean panic screen. Fixing this
+  needs an IST-backed stack for vector 8 *and* a second exception-frame
+  shape in `isr_common_stub`/`isr.h` to account for the RSP/SS the CPU
+  additionally pushes on an IST-induced stack switch (see
+  `docs/ARCHITECTURE.md`, "IDT and interrupt dispatch") — deferred rather
+  than risking getting that interaction subtly wrong.
+- **IOAPIC base address** (Phase 1): hardcoded to the conventional
+  `0xfec00000` default (see `docs/ARCHITECTURE.md`) instead of read from
+  the ACPI MADT, since ACPI parsing is a Phase 3 deliverable. Correct for
+  QEMU's q35/i440fx and virtually every real chipset, wrong for a system
+  with a non-default IOAPIC placement.
+- **Panic stack traces have no symbol resolution** (Phase 1): frame
+  addresses are printed raw; there's no kernel-side symbol table to turn
+  them into function names. Cross-reference against
+  `build/quin-kernel.elf` with `addr2line` or gdb.
+- **`kernel/arch/x86_64/mm/early_map.c`** (Phase 1): a deliberately
+  minimal, hand-rolled page-table editor that exists only to reach the
+  LAPIC/IOAPIC MMIO pages before Phase 2's real VMM exists. Not a general
+  mapping API — don't extend it; Phase 2's `vmm_map` replaces it.
 - **SMP**: `kernel/arch/x86_64/cpu` brings up the boot processor (BSP) only.
   Application processor (AP) bring-up via the MADT's LAPIC entries, the
   INIT-SIPI-SIPI sequence, and per-CPU scheduler runqueues are not
