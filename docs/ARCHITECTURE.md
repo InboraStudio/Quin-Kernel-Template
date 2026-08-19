@@ -352,7 +352,95 @@ temporary echo-to-serial loop used to check it.
 
 ## Scheduling (Phase 4)
 
-Not yet implemented — see `docs/ROADMAP.md`.
+### Spinlocks
+
+`kernel/sched/spinlock.c`. A real atomic test-and-test-and-set lock
+(`__atomic_exchange_n`/`__atomic_store_n`, with a plain-read inner spin
+loop and `pause` to avoid hammering the cache line) — not a `cli`/`sti`
+stand-in, even though this kernel only ever runs one CPU today. The
+`_irqsave`/`_irqrestore` variants additionally save and restore `RFLAGS`
+around a `cli`, so a lock touched from both normal code and an
+interrupt handler can't deadlock against its own interrupted owner; the
+plain variants are only safe for locks nothing in interrupt context
+ever acquires.
+
+### Kernel threads and context switching
+
+`kernel/sched/thread.c` (arch-independent: allocation, the fake initial
+stack frame) and `kernel/arch/x86_64/cpu/context_switch.S` (the actual
+register swap). A context switch is treated as an unusual function call:
+`context_switch(&old->stack_pointer, new->stack_pointer)` pushes the
+SysV callee-saved registers onto the outgoing thread's stack, stashes
+the resulting `RSP`, loads the incoming thread's stashed `RSP`, pops its
+registers, and `ret`s — landing back wherever that thread was when it
+was last switched away from.
+
+A thread that has never run yet has no such "last switched away from"
+point, so `thread_create` fabricates one: it writes six register slots
+and a return address onto a fresh guard-paged stack (`vmm_alloc_guarded`
+— Phase 2's guard-page primitive finds its first real consumer here),
+with the entry function and its argument placed in the exact slots
+`context_switch`'s `pop` sequence loads into `r12`/`r13`, and the return
+address pointing at `thread_trampoline`. Trampoline moves `r13` into
+`rdi` (the SysV first-argument register) and calls `*r12` — completing
+what amounts to a hand-rolled `entry(arg)` call that a plain `ret`
+couldn't set up on its own.
+
+**Why `thread_trampoline` calls `sti`, and why that's exactly what
+caused (and, once understood, fixed) a real deadlock during Phase 4
+development:** interrupt gates clear `IF` on entry, and nothing in this
+kernel explicitly restores it *except* the eventual `iretq` at the end
+of whichever interrupt frame is on the current stack. A thread resuming
+through its own previously-suspended interrupt frame gets `IF` restored
+correctly by that `iretq`, later. A thread running for the very first
+time has no such frame — without an explicit `sti` in `thread_trampoline`,
+it would simply never receive another interrupt, including the timer
+tick that's supposed to preempt it.
+
+That fix alone surfaced a second, worse bug: `sti` in `thread_trampoline`
+re-enables interrupts *before* the timer interrupt that triggered the
+switch has been acknowledged, because `isr_dispatch` used to send EOI
+*after* the handler returns — and a handler that context-switches away
+doesn't return in the normal sense until, potentially, a long time
+later. With EOI still outstanding, the LAPIC withholds every further
+tick of that vector, so nothing ever preempts the new thread, nothing
+ever switches back to the thread whose stack the deferred EOI call is
+buried in, and the machine hangs — permanently, not just slowly. This
+is exactly what happened when Phase 4's preemption was first tested
+with a thread that deliberately never yields. The fix was moving EOI in
+`isr_dispatch` (`kernel/arch/x86_64/cpu/isr.c`) to fire *before* the
+handler runs rather than after, which is both correct and, per Intel's
+own guidance, the generally preferred ordering anyway (it minimizes
+interrupt latency for whatever's next in line). See the comment at that
+call site for the full account.
+
+### Round-robin scheduler
+
+`kernel/sched/sched.c`. Threads sit in a circular singly-linked ready
+list; `current` points at whichever one is running. `sched_tick`
+(called from the timer ISR every tick — `kernel/drivers/timer/timer.c`)
+counts ticks since the last switch and preempts to `current->next` once
+`SCHED_TIME_SLICE_TICKS` (10, i.e. 10ms at the timer's 1000Hz) have
+elapsed; `sched_yield` does the same immediately, for voluntary
+preemption points. The ready-list read-modify-write itself is protected
+by an `_irqsave` spinlock — necessary even on one core, since
+`sched_tick` running the same code from interrupt context is exactly
+the hazard those variants exist for.
+
+`sched_init` wraps whatever kmain was doing as thread 0 (`bootstrap_thread`)
+so there's always a valid `current` to save into on the very first
+switch, without needing `thread_create`'s fake-stack machinery for code
+that already has a perfectly good real stack.
+
+Verified two ways: three threads voluntarily round-robining through a
+few `sched_yield` calls each (confirming basic switching and argument
+passing work), and — separately, to specifically catch the EOI bug
+above — a thread that busy-loops for 500 ticks without ever yielding,
+alongside a second thread that only makes progress if real preemption
+(not cooperative yielding) is actually happening. Both checks' demo
+code was removed after confirming the behavior; only the three-thread
+round-robin demo ships in `kmain` as a permanent, visible demonstration
+of the scheduler skeleton actually working.
 
 ## Syscall ABI (Phase 5)
 

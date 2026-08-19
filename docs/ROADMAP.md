@@ -32,8 +32,18 @@ smoke test.
       PIT, a leveled logger, and a PS/2 keyboard driver. Verified with
       QEMU's monitor `sendkey` (including a shifted key) echoed to
       serial before removing the temporary test loop.
-- [ ] **Phase 4 — Concurrency skeleton**: kernel threads, round-robin
-      scheduler, spinlocks.
+- [x] **Phase 4 — Concurrency skeleton**: kernel threads with hand-rolled
+      context switching, a preemptive round-robin scheduler, atomic
+      spinlocks with interrupt-safe variants. Verified with two separate
+      demos (both removed after confirming the behavior, leaving only a
+      permanent 3-thread round-robin demo in `kmain`): voluntary
+      round-robin across several `sched_yield` calls, and — specifically
+      to catch true preemption — a thread that busy-loops for 500 ticks
+      without ever yielding. The second demo caught a real deadlock (see
+      `docs/ARCHITECTURE.md`, "Kernel threads and context switching")
+      where EOI'd-after-the-handler timer dispatch permanently starved
+      the LAPIC of further ticks once a thread was preempted for the
+      first time; fixed by EOI'ing before the handler runs instead.
 - [ ] **Phase 5 — Syscall groundwork**: `syscall`/`sysret` entry stub, ring-3
       jump path.
 - [ ] **Phase 6 — Test harness & polish**: host-side unit tests, QEMU
@@ -78,11 +88,13 @@ smoke test.
   left on the table, not a correctness problem.
 - **`vmm_alloc_guarded` leaks frames on partial failure** (Phase 2): if
   the PMM runs out of frames partway through a multi-page guarded
-  allocation, the pages already mapped in that call are not freed. No
-  caller currently allocates more than a couple of pages at a time, so
-  this hasn't mattered in practice, but a real consumer (e.g. Phase 4
-  sizing a kernel stack) should get a rollback path before relying on
-  allocation failure being recoverable.
+  allocation, the pages already mapped in that call are not freed.
+  `thread_create` (Phase 4) is the first real consumer, allocating a
+  4-page stack per thread; `kmalloc`/`vmm_alloc_guarded` returning
+  `NULL` there just fails the `thread_create` call rather than
+  corrupting anything, but the leaked pages (if any were mapped before
+  the failure) aren't recovered. Worth a rollback path before anything
+  allocates enough pages per call for a partial failure to be likely.
 - **The kernel heap has a fixed 16MiB ceiling** (Phase 2): `kmalloc`
   returns `NULL` once the reserved lazy region is exhausted; there's no
   growth path (extending the reserved virtual range, or falling back to
@@ -106,6 +118,24 @@ smoke test.
   F-keys, arrows, the numpad, and the `0xE0`-prefixed extended scancodes
   (right Ctrl/Alt, the cursor cluster, ...) are silently dropped, and
   Caps Lock isn't tracked (only Shift is).
+- **No thread exit or reaping** (Phase 4): a thread that finishes its
+  work has nowhere to go — the demo threads in `kmain` fall into an
+  infinite `hlt` loop, still present in the ready queue forever, rather
+  than being removed and having their stack/struct freed. If the entry
+  function actually *returns* instead, `thread_exited`
+  (`kernel/sched/thread.c`) panics; there's no supported exit path yet,
+  only a backstop against silently executing garbage.
+- **No blocking/sleep primitive** (Phase 4): threads can only run or
+  spin; there's no `sched_block`/`sched_wake` pair or wait queue, so
+  anything that needs to wait for an event (I/O, a timer, another
+  thread) has to busy-loop calling `sched_yield` itself. A real
+  scheduler wants blocked threads out of the ready rotation entirely.
+- **Fixed per-thread stack size, no overflow beyond the guard page**
+  (Phase 4): every thread gets exactly `THREAD_STACK_PAGES` (4, 16KiB)
+  via `vmm_alloc_guarded` — correct enough to catch an overflow as a
+  clean page fault instead of silent corruption (that's the whole point
+  of the guard page), but there's no way to request a larger stack for
+  a thread that needs one.
 - **SMP**: `kernel/arch/x86_64/cpu` brings up the boot processor (BSP) only.
   Application processor (AP) bring-up via the MADT's LAPIC entries, the
   INIT-SIPI-SIPI sequence, and per-CPU scheduler runqueues are not
@@ -133,7 +163,10 @@ smoke test.
   code in low memory, per-CPU GDT/TSS/IDT, a scheduler that's actually
   SMP-safe rather than just spinlock-protected) and half-implementing it
   would be worse than a clear boundary. If you take this on in your fork,
-  start from the MADT parsing already in `kernel/acpi`.
+  start from the MADT's LAPIC entries (`kernel/acpi/madt.c` already
+  counts them) for AP discovery, and `kernel/sched/spinlock.c`'s atomic
+  (not `cli`/`sti`-based) locks, which were written to already be
+  SMP-correct even though nothing exercises that yet.
 - **A hardened security model.** No KASLR, no SMEP/SMAP enforcement audit,
   no userspace isolation guarantees. See `SECURITY.md`.
 - **FPU/SSE state.** The kernel builds with `-mno-sse -mno-sse2 -mno-mmx`

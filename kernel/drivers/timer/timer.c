@@ -3,12 +3,17 @@
 #include "arch/x86_64/cpu/isr.h"
 #include "arch/x86_64/cpu/lapic_timer.h"
 #include "lib/log.h"
+#include "sched/sched.h"
 
 static volatile uint64_t ticks;
 
+/* sched_init() must run before timer_init() -- kmain does -- since
+ * sched_tick dereferences the scheduler's `current` thread, which isn't
+ * valid until then. */
 static void timer_tick_handler(struct interrupt_frame *frame) {
     (void)frame;
     ticks++;
+    sched_tick();
 }
 
 void timer_init(void) {

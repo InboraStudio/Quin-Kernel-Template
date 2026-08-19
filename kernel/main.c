@@ -17,11 +17,31 @@
 #include "lib/log.h"
 #include "mm/heap.h"
 #include "mm/pmm.h"
+#include "sched/sched.h"
+#include "sched/thread.h"
 
 /* Used only if the MADT is missing or has no IOAPIC entry -- the
  * conventional base every common chipset, including QEMU's q35/i440fx,
  * uses. See docs/ARCHITECTURE.md, "LAPIC / IOAPIC". */
 #define DEFAULT_IOAPIC_PHYS_BASE 0xfec00000ULL
+
+#define DEMO_THREAD_ITERATIONS 3
+
+/* Demonstrates the scheduler skeleton: three threads round-robin
+ * through DEMO_THREAD_ITERATIONS voluntary yields each, then settle
+ * into an interrupt-driven idle loop (still schedulable, just with
+ * nothing left to do -- there's no thread-exit path yet, see
+ * thread_exited in kernel/sched/thread.c). */
+static void demo_thread(void *arg) {
+    const char *name = arg;
+    for (int i = 0; i < DEMO_THREAD_ITERATIONS; i++) {
+        log_info("sched: thread %s, iteration %d", name, i);
+        sched_yield();
+    }
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
+}
 
 static const char *const banner =
     " /$$$$$$            /$$\n"
@@ -76,6 +96,9 @@ void kmain(void) {
     }
     ioapic_init(ioapic_phys_base);
 
+    /* Before timer_init: the timer ISR calls sched_tick, which
+     * dereferences the scheduler's `current` thread. */
+    sched_init();
     timer_init();
 
     keyboard_init();
@@ -85,6 +108,13 @@ void kmain(void) {
 
     log_info("Quin Kernel Template -- Inbora Studio");
     log_info("booted via Limine (UEFI)");
+
+    thread_create(demo_thread, "A");
+    thread_create(demo_thread, "B");
+    thread_create(demo_thread, "C");
+    for (int i = 0; i < DEMO_THREAD_ITERATIONS; i++) {
+        sched_yield();
+    }
 
     /* No-op unless QEMU was launched with isa-debug-exit attached (see
      * qemu_exit.h); this is what lets the CI smoke test and
