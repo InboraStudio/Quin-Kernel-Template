@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define PAGE_SIZE 4096
+#define PAGE_SIZE 4096ULL
 
 /* Bitmap physical frame allocator, built once from the bootloader's
  * memory map (boot_get_memmap) and never consulting it again. Must run

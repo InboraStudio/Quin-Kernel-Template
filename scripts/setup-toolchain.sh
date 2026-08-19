@@ -31,6 +31,8 @@ Linux)
         clang \
         lld \
         llvm \
+        clang-format \
+        clang-tidy \
         xorriso \
         qemu-system-x86 \
         ovmf \
@@ -50,8 +52,11 @@ Darwin)
     info "installing packages via Homebrew..."
     brew install llvm lld xorriso qemu gdb make curl
 
-    info "done. Homebrew's clang/lld are keg-only; scripts/build.sh finds them via"
-    info "'brew --prefix llvm' automatically. OVMF ships inside the qemu formula's share dir."
+    info "done. Homebrew's llvm keg is keg-only (not linked onto PATH, so it doesn't"
+    info "shadow Xcode's own clang) -- the top-level Makefile finds clang/ld.lld there"
+    info "automatically via 'brew --prefix llvm'. clang-format and clang-tidy ship in"
+    info "the same keg: run '\$(brew --prefix llvm)/bin/clang-format' directly, or add"
+    info "that bin/ to your PATH. OVMF ships inside the qemu formula's share dir."
     ;;
 
 MINGW* | MSYS* | CYGWIN*)

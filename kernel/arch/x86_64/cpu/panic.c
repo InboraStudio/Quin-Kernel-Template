@@ -86,8 +86,7 @@ static NORETURN void panic_halt(void) {
 
 void panic_exception(struct interrupt_frame *frame) {
     const char *name = frame->vector < 32 ? exception_names[frame->vector] : "Unknown";
-    panic_printf("[PANIC] %s (vector %lu, error 0x%lx)\n", name, frame->vector,
-                 frame->error_code);
+    panic_printf("[PANIC] %s (vector %lu, error 0x%lx)\n", name, frame->vector, frame->error_code);
 
     if (frame->vector == 14) {
         uint64_t cr2;
@@ -95,8 +94,7 @@ void panic_exception(struct interrupt_frame *frame) {
         panic_printf("CR2=0x%016lx (faulting address)\n", cr2);
     }
 
-    panic_printf("RIP=0x%016lx CS=0x%04lx RFLAGS=0x%016lx\n", frame->rip, frame->cs,
-                 frame->rflags);
+    panic_printf("RIP=0x%016lx CS=0x%04lx RFLAGS=0x%016lx\n", frame->rip, frame->cs, frame->rflags);
     panic_printf("RAX=0x%016lx RBX=0x%016lx RCX=0x%016lx\n", frame->rax, frame->rbx, frame->rcx);
     panic_printf("RDX=0x%016lx RSI=0x%016lx RDI=0x%016lx\n", frame->rdx, frame->rsi, frame->rdi);
     panic_printf("RBP=0x%016lx R8= 0x%016lx R9= 0x%016lx\n", frame->rbp, frame->r8, frame->r9);

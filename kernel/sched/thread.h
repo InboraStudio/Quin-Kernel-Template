@@ -8,7 +8,7 @@ struct thread {
      * (kernel/arch/x86_64/cpu/context_switch.S) writes it on the way out
      * and reads it on the way back in. */
     uint64_t *stack_pointer;
-    void *stack_base;   /* for the guard-paged allocation this came from */
+    void *stack_base; /* for the guard-paged allocation this came from */
     uint64_t id;
     struct thread *next; /* circular ready-queue link -- see kernel/sched/sched.h */
 };

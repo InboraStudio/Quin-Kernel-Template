@@ -13,6 +13,21 @@ ISO := build/quin-kernel.iso
 CC := clang
 LD := ld.lld
 
+# On macOS, Homebrew's llvm formula is keg-only -- deliberately not
+# linked onto PATH, so it doesn't shadow Xcode's own clang -- which
+# means the plain `clang`/`ld.lld` above would silently resolve to
+# Apple's clang (no x86_64-none-elf freestanding target support) instead
+# of the one scripts/setup-toolchain.sh just installed. Point CC/LD at
+# Homebrew's copy explicitly when it's present; Linux's apt-installed
+# clang/lld are already directly on PATH, so this is a no-op there.
+ifeq ($(shell uname -s),Darwin)
+    BREW_LLVM_PREFIX := $(shell brew --prefix llvm 2>/dev/null)
+    ifneq ($(BREW_LLVM_PREFIX),)
+        CC := $(BREW_LLVM_PREFIX)/bin/clang
+        LD := $(BREW_LLVM_PREFIX)/bin/ld.lld
+    endif
+endif
+
 TARGET := x86_64-none-elf
 
 LIMINE_VERSION := v12.5.2

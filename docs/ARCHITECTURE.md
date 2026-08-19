@@ -535,3 +535,34 @@ genuinely did say `User=1`, and got a protection fault anyway. Fixed by
 always setting `User` on intermediate entries too, same reasoning as
 the pre-existing Writable choice: a leaf's own flags are what should
 actually govern access, not an accidentally-more-restrictive ancestor.
+
+## Testing (Phase 6)
+
+Two layers, deliberately not one:
+
+- **`tests/unit/`** — host-side, no QEMU, no cross toolchain, just the
+  host's own `cc`. Only code with zero freestanding-specific
+  dependencies can live here, which in practice means it has to be
+  extracted first: `kernel/mm/pmm.c`'s bit-twiddling used to be inline
+  static functions inside that file, coupled to `boot_get_memmap` and
+  physical-address bookkeeping that has no meaning outside a booted
+  kernel. Pulling the actual bitmap operations out into
+  `kernel/lib/bitmap.c` — which depends on nothing but `<stdint.h>`/
+  `<stdbool.h>`, identical on the host and the freestanding target —
+  is what makes `tests/unit/test_bitmap.c` possible at all; `pmm.c` is
+  now a thin (and not independently host-testable) integration layer
+  on top of it. That's the pattern for adding more host-side coverage
+  later: find the pure-logic core, give it zero kernel-specific
+  dependencies, test *that*, directly.
+- **`scripts/run.sh test`** — the QEMU integration smoke test: boots
+  the real ISO headlessly, asserts the banner appears on serial, and
+  checks the `isa-debug-exit` exit code. This is what every phase in
+  this document was actually verified against, often via a temporary,
+  deliberately-provoked failure (a guard-page overrun, a busy-looping
+  thread, `int3` from ring 3, ...) added, checked, and removed —
+  documented here and in `docs/ROADMAP.md` rather than left in `kmain`
+  permanently. Both real bugs this template shipped with (the PMM
+  bitmap sizing in Phase 2, the missing intermediate-entry User bit in
+  Phase 5) were caught exactly this way, not by either test layer
+  running unattended — worth keeping in mind before trusting either
+  layer alone to catch the next one.

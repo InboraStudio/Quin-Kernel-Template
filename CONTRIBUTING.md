@@ -26,7 +26,8 @@ Common types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`.
 
 1. `scripts/build.sh` — must complete with zero warnings (`-Werror` is on;
    treat any new warning as a bug in your change, not something to suppress).
-2. `clang-format --check` (or `-i` to fix) against `.clang-format`.
+2. `scripts/build.sh fmt-check` (or `scripts/build.sh fmt` to fix in place)
+   — `clang-format` against `.clang-format`.
 3. `make -C tests/unit` — host-side unit tests must pass.
 4. `scripts/run.sh test` — QEMU headless smoke test must pass.
 5. Update `docs/ROADMAP.md` if your change moves something from

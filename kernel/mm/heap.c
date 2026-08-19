@@ -79,7 +79,8 @@ void kfree(void *ptr) {
         return;
     }
 
-    struct block_header *node = (struct block_header *)((uint8_t *)ptr - sizeof(struct block_header));
+    struct block_header *node =
+        (struct block_header *)((uint8_t *)ptr - sizeof(struct block_header));
     node->free = true;
 
     if (node->next != NULL && node->next->free) {

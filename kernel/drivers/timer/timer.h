@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-#define TIMER_VECTOR 32 /* IRQ0's vector -- delivered directly by the LAPIC, not through the IOAPIC */
+#define TIMER_VECTOR \
+    32 /* IRQ0's vector -- delivered directly by the LAPIC, not through the IOAPIC */
 #define TIMER_FREQUENCY_HZ 1000
 
 /* Calibrates and starts the LAPIC timer (kernel/arch/x86_64/cpu/lapic_timer.h)

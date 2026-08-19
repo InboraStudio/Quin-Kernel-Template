@@ -61,7 +61,8 @@ bool madt_parse(struct madt_info *out) {
         }
 
         if (entry_header->type == MADT_ENTRY_LOCAL_APIC) {
-            const struct madt_local_apic_entry *lapic = (const struct madt_local_apic_entry *)cursor;
+            const struct madt_local_apic_entry *lapic =
+                (const struct madt_local_apic_entry *)cursor;
             if (lapic->flags & LOCAL_APIC_FLAG_ENABLED) {
                 out->enabled_cpu_count++;
             }

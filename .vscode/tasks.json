@@ -21,6 +21,13 @@
             "problemMatcher": []
         },
         {
+            "label": "quin: unit tests",
+            "type": "shell",
+            "command": "make -C tests/unit",
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": ["$gcc"]
+        },
+        {
             "label": "quin: clean",
             "type": "shell",
             "command": "${workspaceFolder}/scripts/clean.sh",

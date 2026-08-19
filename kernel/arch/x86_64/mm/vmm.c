@@ -63,7 +63,7 @@ static uint64_t translate_flags(uint32_t flags) {
 }
 
 static void page_table_indices(uint64_t virt, unsigned *pml4_i, unsigned *pdpt_i, unsigned *pd_i,
-                                unsigned *pt_i) {
+                               unsigned *pt_i) {
     *pml4_i = (unsigned)((virt >> 39) & (PAGE_TABLE_ENTRIES - 1));
     *pdpt_i = (unsigned)((virt >> 30) & (PAGE_TABLE_ENTRIES - 1));
     *pd_i = (unsigned)((virt >> 21) & (PAGE_TABLE_ENTRIES - 1));

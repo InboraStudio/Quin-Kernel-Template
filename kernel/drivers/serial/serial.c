@@ -47,8 +47,7 @@ void serial_putc(char c) {
     if (c == '\n') {
         serial_putc('\r');
     }
-    while (!transmit_empty()) {
-    }
+    while (!transmit_empty()) {}
     outb(COM1 + REG_DATA, (uint8_t)c);
 }
 

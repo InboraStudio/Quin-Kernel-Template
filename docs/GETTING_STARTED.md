@@ -7,7 +7,7 @@ Linux (apt-based) or macOS with Homebrew, natively. On Windows, use WSL2
 Windows isn't supported (see `docs/FAQ.md`).
 
 ```bash
-git clone --recursive https://github.com/inbora-studio/quin-kernel-template.git
+git clone --recursive https://github.com/InboraStudio/Quin-Kernel-Template.git
 cd quin-kernel-template
 ./scripts/setup-toolchain.sh
 ```
@@ -27,6 +27,9 @@ git submodule update --init --recursive
 ./scripts/debug.sh           # boots QEMU paused, attaches a terminal gdb session
 ./scripts/clean.sh           # removes build/
 ./scripts/clean.sh --all     # also drops the cached Limine binary download
+make -C tests/unit           # host-side unit tests -- no QEMU, no cross toolchain, just cc
+./scripts/build.sh fmt-check # clang-format --dry-run (what lint.yml runs)
+./scripts/build.sh fmt       # clang-format -i -- fixes formatting in place
 ```
 
 `scripts/run.sh` (no `test` argument) opens a QEMU window and mirrors
@@ -68,17 +71,26 @@ just works.
 | `kernel/mm/` | Arch-independent memory management: physical allocator, VMM, heap |
 | `kernel/drivers/` | Serial, framebuffer, keyboard, timer |
 | `kernel/acpi/` | ACPI table parsing |
-| `kernel/sched/` | Scheduler |
-| `kernel/syscall/` | Syscall entry scaffolding |
-| `kernel/lib/` | Freestanding subset of libc actually used: string ops, printf |
+| `kernel/sched/` | Scheduler, threads, spinlocks |
+| `kernel/lib/` | Freestanding subset of libc actually used: string ops, printf, logger |
 | `kernel/include/` | Cross-cutting headers shared across subsystems |
 | `tests/unit/` | Host-side unit tests (no QEMU) for architecture-independent logic |
-| `tests/integration/` | QEMU-based integration tests |
+| `tests/integration/` | The QEMU boot smoke test `scripts/run.sh test` runs |
 | `docs/` | This file, `ARCHITECTURE.md`, `ROADMAP.md`, `CODING_STYLE.md`, `FAQ.md` |
 
 Module headers live next to their `.c` file (e.g. `kernel/drivers/serial/serial.h`
 alongside `serial.c`); `kernel/include/` is only for headers genuinely
 shared across subsystem boundaries (`kernel.h`, `boot_info.h`).
+
+No separate `kernel/syscall/`: the `SYSCALL`/`SYSRET` entry stub and the
+ring-3 jump path live in `kernel/arch/x86_64/cpu/syscall.c` +
+`syscall_entry.S` instead. Unlike the timer or keyboard, there's no
+meaningful arch-independent "syscall" concept to split out yet — the
+entry mechanism itself is a different CPU instruction on every
+architecture (`SYSCALL` here, `SVC` on aarch64, `ECALL` on RISC-V), and
+there's no syscall table or dispatch policy on top of it yet for an
+arch-independent layer to own. See `docs/ARCHITECTURE.md`, "Syscall
+ABI (Phase 5)".
 
 ## If something goes wrong
 

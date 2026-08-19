@@ -3,6 +3,7 @@
 #include "arch/x86_64/boot/limine_requests.h"
 #include "arch/x86_64/cpu/panic.h"
 #include "kernel.h"
+#include "lib/bitmap.h"
 #include "lib/string.h"
 
 /* Bit set = frame in use (or simply untracked, e.g. reserved/MMIO). Bit
@@ -10,24 +11,14 @@
  * ones inside a usable memmap region means anything the bootloader
  * didn't explicitly call out as usable -- reserved, ACPI, MMIO gaps, bad
  * memory -- is never handed out, with no separate exclusion list to
- * maintain. */
+ * maintain. The bit-twiddling itself lives in kernel/lib/bitmap.c,
+ * exercised directly by tests/unit/test_bitmap.c without needing QEMU;
+ * everything here is the boot-time integration around it. */
 static uint8_t *bitmap;
 static uint64_t frame_count;
 static uint64_t next_search_index;
 static uint64_t hhdm_offset;
 static uint64_t free_frames;
-
-static void bitmap_set(uint64_t frame) {
-    bitmap[frame / 8] |= (uint8_t)(1U << (frame % 8));
-}
-
-static void bitmap_clear(uint64_t frame) {
-    bitmap[frame / 8] &= (uint8_t)~(1U << (frame % 8));
-}
-
-static bool bitmap_test(uint64_t frame) {
-    return (bitmap[frame / 8] & (uint8_t)(1U << (frame % 8))) != 0;
-}
 
 static void *phys_to_virt(uint64_t phys) {
     return (void *)(uintptr_t)(phys + hhdm_offset);
@@ -71,8 +62,7 @@ void pmm_init(void) {
         }
     }
     if (bitmap_phys == 0) {
-        panic("pmm: no usable region large enough for the frame bitmap (%lu bytes)",
-              bitmap_bytes);
+        panic("pmm: no usable region large enough for the frame bitmap (%lu bytes)", bitmap_bytes);
     }
 
     bitmap = phys_to_virt(bitmap_phys);
@@ -85,7 +75,7 @@ void pmm_init(void) {
         uint64_t start_frame = memmap.entries[i].base / PAGE_SIZE;
         uint64_t end_frame = (memmap.entries[i].base + memmap.entries[i].length) / PAGE_SIZE;
         for (uint64_t frame = start_frame; frame < end_frame; frame++) {
-            bitmap_clear(frame);
+            bitmap_clear(bitmap, frame);
             free_frames++;
         }
     }
@@ -96,39 +86,38 @@ void pmm_init(void) {
     uint64_t bitmap_start_frame = bitmap_phys / PAGE_SIZE;
     uint64_t bitmap_end_frame = bitmap_start_frame + align_up(bitmap_bytes, PAGE_SIZE) / PAGE_SIZE;
     for (uint64_t frame = bitmap_start_frame; frame < bitmap_end_frame; frame++) {
-        if (!bitmap_test(frame)) {
-            bitmap_set(frame);
+        if (!bitmap_test(bitmap, frame)) {
+            bitmap_set(bitmap, frame);
             free_frames--;
         }
     }
-    if (!bitmap_test(0)) {
-        bitmap_set(0);
+    if (!bitmap_test(bitmap, 0)) {
+        bitmap_set(bitmap, 0);
         free_frames--;
     }
 }
 
 uint64_t pmm_alloc_frame(void) {
-    for (uint64_t offset = 0; offset < frame_count; offset++) {
-        uint64_t frame = (next_search_index + offset) % frame_count;
-        if (!bitmap_test(frame)) {
-            bitmap_set(frame);
-            free_frames--;
-            next_search_index = frame + 1;
-
-            uint64_t phys = frame * PAGE_SIZE;
-            memset(phys_to_virt(phys), 0, PAGE_SIZE);
-            return phys;
-        }
+    uint64_t frame = bitmap_find_first_clear(bitmap, frame_count, next_search_index);
+    if (frame == frame_count) {
+        return 0;
     }
-    return 0;
+
+    bitmap_set(bitmap, frame);
+    free_frames--;
+    next_search_index = frame + 1;
+
+    uint64_t phys = frame * PAGE_SIZE;
+    memset(phys_to_virt(phys), 0, PAGE_SIZE);
+    return phys;
 }
 
 void pmm_free_frame(uint64_t phys_addr) {
     uint64_t frame = phys_addr / PAGE_SIZE;
-    if (frame >= frame_count || !bitmap_test(frame)) {
+    if (frame >= frame_count || !bitmap_test(bitmap, frame)) {
         panic("pmm_free_frame: double free or invalid address 0x%lx", phys_addr);
     }
-    bitmap_clear(frame);
+    bitmap_clear(bitmap, frame);
     free_frames++;
 }
 

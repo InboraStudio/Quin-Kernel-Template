@@ -91,8 +91,8 @@ static void (*const isr_stubs[32])(void) = {
 };
 
 static void (*const irq_stubs[16])(void) = {
-    irq_stub_0, irq_stub_1, irq_stub_2,  irq_stub_3,  irq_stub_4,  irq_stub_5,
-    irq_stub_6, irq_stub_7, irq_stub_8,  irq_stub_9,  irq_stub_10, irq_stub_11,
+    irq_stub_0,  irq_stub_1,  irq_stub_2,  irq_stub_3,  irq_stub_4,  irq_stub_5,
+    irq_stub_6,  irq_stub_7,  irq_stub_8,  irq_stub_9,  irq_stub_10, irq_stub_11,
     irq_stub_12, irq_stub_13, irq_stub_14, irq_stub_15,
 };
 

@@ -18,16 +18,16 @@ in QEMU with a real physical/virtual memory manager, interrupts, and a
 scheduler skeleton already working — so you start writing *your* kernel
 instead of fighting a linker script.
 
-[![build](https://github.com/inbora-studio/quin-kernel-template/actions/workflows/build.yml/badge.svg)](https://github.com/inbora-studio/quin-kernel-template/actions/workflows/build.yml)
-[![lint](https://github.com/inbora-studio/quin-kernel-template/actions/workflows/lint.yml/badge.svg)](https://github.com/inbora-studio/quin-kernel-template/actions/workflows/lint.yml)
+[![build](https://github.com/InboraStudio/Quin-Kernel-Template/actions/workflows/build.yml/badge.svg)](https://github.com/InboraStudio/Quin-Kernel-Template/actions/workflows/build.yml)
+[![lint](https://github.com/InboraStudio/Quin-Kernel-Template/actions/workflows/lint.yml/badge.svg)](https://github.com/InboraStudio/Quin-Kernel-Template/actions/workflows/lint.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Built by [Inbora Studio](https://github.com/inbora-studio).
+Built by [Inbora Studio](https://github.com/InboraStudio).
 
 ## Quick start
 
 ```bash
-git clone --recursive https://github.com/inbora-studio/quin-kernel-template.git
+git clone --recursive https://github.com/InboraStudio/Quin-Kernel-Template.git
 cd quin-kernel-template
 ./scripts/setup-toolchain.sh
 ./scripts/build.sh && ./scripts/run.sh
@@ -76,5 +76,5 @@ reference already assumes.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). Limine itself is BSD-2-Clause; see
-`third_party/limine`.
+MIT — see [`LICENSE`](LICENSE). Limine itself is 0BSD; see
+`third_party/limine/LICENSE`.

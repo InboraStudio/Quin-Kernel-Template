@@ -19,6 +19,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang lld llvm xorriso qemu-system-x86 ovmf gdb make curl
 
+      - name: Host-side unit tests
+        run: make -C tests/unit
+
       - name: Build ISO
         run: ./scripts/build.sh
 

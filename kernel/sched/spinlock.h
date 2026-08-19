@@ -12,8 +12,7 @@ struct spinlock {
     volatile uint32_t locked;
 };
 
-#define SPINLOCK_INIT \
-    { .locked = 0 }
+#define SPINLOCK_INIT {.locked = 0}
 
 void spinlock_init(struct spinlock *lock);
 

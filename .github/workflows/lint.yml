@@ -12,10 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: clang-format --check
+      - name: Install clang-format
         run: |
-          files=$(find kernel tests -name '*.c' -o -name '*.h')
-          clang-format --dry-run --Werror $files
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: clang-format --check
+        run: ./scripts/build.sh fmt-check
 
   clang-tidy:
     runs-on: ubuntu-latest

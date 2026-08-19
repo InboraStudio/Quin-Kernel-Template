@@ -33,7 +33,9 @@
 extern void syscall_entry(void);
 extern uint64_t kernel_syscall_rsp; /* defined in syscall_entry.S; set once, below */
 
-#define ENOSYS 38 /* matches the standard POSIX/Linux errno value, though this kernel has no broader errno story yet */
+#define ENOSYS                                                                                  \
+    38 /* matches the standard POSIX/Linux errno value, though this kernel has no broader errno \
+          story yet */
 
 int64_t syscall_dispatch(uint64_t syscall_number) {
     log_warn("syscall: number %lu is not implemented (ENOSYS)", syscall_number);

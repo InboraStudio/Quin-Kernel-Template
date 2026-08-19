@@ -53,8 +53,10 @@ smoke test.
       never granted intermediate page-table entries the User bit,
       silently making every mapping supervisor-only) — see
       `docs/ARCHITECTURE.md`, "Jumping to ring 3".
-- [ ] **Phase 6 — Test harness & polish**: host-side unit tests, QEMU
-      `isa-debug-exit` CI smoke test.
+- [x] **Phase 6 — Test harness & polish**: `kernel/lib/bitmap.c` extracted
+      from `kernel/mm/pmm.c` so it has zero freestanding-specific
+      dependencies, host-tested by `tests/unit/test_bitmap.c` (`make -C
+      tests/unit`, wired into CI alongside the existing QEMU smoke test).
 
 ## Scaffolded but incomplete
 
@@ -153,6 +155,16 @@ smoke test.
   clean page fault instead of silent corruption (that's the whole point
   of the guard page), but there's no way to request a larger stack for
   a thread that needs one.
+- **Host-side unit test coverage is minimal** (Phase 6): `tests/unit/`
+  covers exactly one module (`kernel/lib/bitmap.c`) — the only piece of
+  kernel logic that happened to already have zero freestanding-specific
+  dependencies. Everything else (the heap allocator, ACPI parsing, the
+  scheduler, ...) is only exercised by the QEMU integration smoke test
+  and by the temporary, manually-verified checks documented throughout
+  `docs/ARCHITECTURE.md` — real coverage, but not automated, and not
+  regression-tested on every CI run the way `test_bitmap.c` is. Extending
+  this means extracting more pure-logic cores the same way, not adding a
+  second testing strategy.
 - **SMP**: `kernel/arch/x86_64/cpu` brings up the boot processor (BSP) only.
   Application processor (AP) bring-up via the MADT's LAPIC entries, the
   INIT-SIPI-SIPI sequence, and per-CPU scheduler runqueues are not

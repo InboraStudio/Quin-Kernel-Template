@@ -29,8 +29,7 @@ uint32_t lapic_timer_calibrate_and_start(uint8_t vector, uint32_t frequency_hz) 
 
     lapic_timer_set_initial_count(0xffffffff);
 
-    while (!(inb(PIT_GATE_SPEAKER_PORT) & 0x20)) {
-    }
+    while (!(inb(PIT_GATE_SPEAKER_PORT) & 0x20)) {}
 
     uint32_t elapsed_ticks = 0xffffffff - lapic_timer_get_current_count();
     uint32_t lapic_frequency_hz = elapsed_ticks * (1000 / CALIBRATION_MS);

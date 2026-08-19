@@ -34,10 +34,10 @@ struct thread *thread_create(thread_entry_fn entry, void *arg) {
     *(--sp) = (uint64_t)(uintptr_t)thread_trampoline; /* return address */
     *(--sp) = 0;                                      /* rbp */
     *(--sp) = 0;                                      /* rbx */
-    *(--sp) = (uint64_t)(uintptr_t)entry;              /* r12 */
-    *(--sp) = (uint64_t)(uintptr_t)arg;                /* r13 */
-    *(--sp) = 0;                                       /* r14 */
-    *(--sp) = 0;                                       /* r15 */
+    *(--sp) = (uint64_t)(uintptr_t)entry;             /* r12 */
+    *(--sp) = (uint64_t)(uintptr_t)arg;               /* r13 */
+    *(--sp) = 0;                                      /* r14 */
+    *(--sp) = 0;                                      /* r15 */
 
     t->stack_pointer = sp;
     t->stack_base = stack;

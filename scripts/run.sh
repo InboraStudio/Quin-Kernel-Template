@@ -46,33 +46,7 @@ COMMON_ARGS=(
 )
 
 if [[ "$MODE" == "test" ]]; then
-    LOG="$(mktemp)"
-    trap 'rm -f "$LOG"' EXIT
-
-    set +e
-    timeout 30s qemu-system-x86_64 \
-        "${COMMON_ARGS[@]}" \
-        -display none \
-        -serial "file:$LOG" \
-        -device isa-debug-exit,iobase=0xf4,iosize=0x04
-    STATUS=$?
-    set -e
-
-    printf '[run] --- serial output ---\n'
-    cat "$LOG"
-    printf '[run] --- end serial output ---\n'
-
-    if [[ $STATUS -ne 33 ]]; then
-        printf '[run] FAIL: expected QEMU exit code 33 (isa-debug-exit success), got %s\n' "$STATUS" >&2
-        exit 1
-    fi
-
-    if ! grep -q "Quin Kernel Template" "$LOG"; then
-        printf '[run] FAIL: boot banner not found in serial output\n' >&2
-        exit 1
-    fi
-
-    printf '[run] PASS: kernel booted and reported success via isa-debug-exit\n'
+    exec ./tests/integration/smoke_test.sh "$OVMF_CODE" "$OVMF_VARS" build/quin-kernel.iso
 else
     exec qemu-system-x86_64 \
         "${COMMON_ARGS[@]}" \

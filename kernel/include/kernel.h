@@ -12,8 +12,7 @@
 
 #define ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-#define CONTAINER_OF(ptr, type, member) \
-    ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
+#define CONTAINER_OF(ptr, type, member) ((type *)((uint8_t *)(ptr) - offsetof(type, member)))
 
 static inline uint64_t align_up(uint64_t value, uint64_t align) {
     return (value + (align - 1)) & ~(align - 1);

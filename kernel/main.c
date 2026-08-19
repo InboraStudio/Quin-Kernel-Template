@@ -84,16 +84,15 @@ static void ring3_demo_thread(void *arg) {
     jump_to_ring3(USER_CODE_VADDR, USER_STACK_VADDR + PAGE_SIZE);
 }
 
-static const char *const banner =
-    " /$$$$$$            /$$\n"
-    " /$$__  $$          |__/\n"
-    "| $$  \\ $$ /$$   /$$ /$$ /$$$$$$$\n"
-    "| $$  | $$| $$  | $$| $$| $$__  $$\n"
-    "| $$  | $$| $$  | $$| $$| $$  \\ $$\n"
-    "| $$/$$ $$| $$  | $$| $$| $$  | $$\n"
-    "|  $$$$$$/|  $$$$$$/| $$| $$  | $$\n"
-    " \\____ $$$ \\______/ |__/|__/  |__/\n"
-    "      \\__/\n";
+static const char *const banner = " /$$$$$$            /$$\n"
+                                  " /$$__  $$          |__/\n"
+                                  "| $$  \\ $$ /$$   /$$ /$$ /$$$$$$$\n"
+                                  "| $$  | $$| $$  | $$| $$| $$__  $$\n"
+                                  "| $$  | $$| $$  | $$| $$| $$  \\ $$\n"
+                                  "| $$/$$ $$| $$  | $$| $$| $$  | $$\n"
+                                  "|  $$$$$$/|  $$$$$$/| $$| $$  | $$\n"
+                                  " \\____ $$$ \\______/ |__/|__/  |__/\n"
+                                  "      \\__/\n";
 
 void kmain(void) {
     serial_init();
@@ -119,7 +118,7 @@ void kmain(void) {
     vmm_init();
     heap_init();
     log_info("mm: %lu/%lu frames free (%lu MiB)", pmm_free_frame_count(), pmm_total_frame_count(),
-              (pmm_free_frame_count() * PAGE_SIZE) / (1024 * 1024));
+             (pmm_free_frame_count() * PAGE_SIZE) / (1024 * 1024));
 
     acpi_init();
 
