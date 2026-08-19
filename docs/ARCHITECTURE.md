@@ -71,22 +71,23 @@ why this split specifically.
 | `0xffffffff80000000` (`KERNEL_VMA`)              | `.text` — kernel code              | supervisor, R+X |
 | next page boundary                               | `.rodata` — read-only data         | supervisor, R only |
 | next page boundary                               | `.data`, `.bss`, Limine request structs | supervisor, R+W, NX |
-| `0xffffffffc0000000` (`EARLY_MMIO_VBASE`)        | LAPIC/IOAPIC MMIO, one 4KiB page each (`kernel/arch/x86_64/mm/early_map.c`) | supervisor, RW, cache-disabled |
+| `0xffffffff90000000` (`HEAP_VBASE`)              | Kernel heap, 16MiB reserved, lazily backed (`kernel/mm/heap.c`) | supervisor, RW, NX |
+| `0xffffffffb0000000` (`VMM_DYNAMIC_VBASE`)       | `vmm_alloc_guarded` allocations, each bounded by unmapped guard pages | supervisor, RW, NX |
+| `0xffffffffc0000000` (`VMM_MMIO_VBASE`)          | Fixed-purpose MMIO (LAPIC, IOAPIC — `vmm_map_mmio`) | supervisor, RW, cache-disabled |
 
 The exact section layout is defined in `kernel/arch/x86_64/linker.ld`;
 `__kernel_start`/`__kernel_end` there bound the whole loaded image. Every
 `PT_LOAD` segment is either read+execute or read+write, never both — see
-the `PHDRS` block — matching the W^X discipline the kernel's own page
-tables will enforce once `kernel/arch/x86_64/mm` (Phase 2) maps things
-itself instead of relying on Limine's initial mappings.
+the `PHDRS` block — matching the W^X discipline `kernel/arch/x86_64/mm/vmm.c`
+enforces for everything it maps from Phase 2 onward.
 
 The HHDM row's exact base isn't fixed: base revision 3 (what this kernel
 requests — see `kernel/arch/x86_64/boot/limine_requests.c`) only maps
 usable, bootloader-reclaimable, executable-and-modules, and framebuffer
 memory-map regions into it, and the base address itself is chosen by the
-bootloader per boot. Code must read it from the HHDM feature response
-rather than assume a fixed offset (this lands in Phase 2, when `kernel/mm`
-starts using it for physical-to-virtual translation).
+bootloader per boot. `kernel/mm/pmm.c` and `kernel/arch/x86_64/mm/vmm.c`
+read it from the HHDM feature response rather than assuming a fixed
+offset.
 
 ## CPU state (Phase 1)
 
@@ -146,10 +147,11 @@ shapes would be a correctness bug, not a simplification.
 through HHDM: their physical addresses (`0xfee00000`, `0xfec00000`) don't
 appear in the firmware memory map at all (verified against this kernel's
 own QEMU/OVMF memmap — they're not DRAM, so there's no entry to map).
-`kernel/arch/x86_64/mm/early_map.c` provides just enough hand-rolled
-page-table editing to reach those two fixed pages before the real VMM
-exists; see that file's header comment before reusing the pattern for
-anything else.
+Both are mapped with `vmm_map_mmio` (Phase 2's VMM), which is why
+`kmain` brings up `pmm_init`/`vmm_init` before `lapic_init`/`ioapic_init`
+— an ordering swap from how Phase 1 originally landed this, back when a
+minimal standalone page-table editor (since removed) mapped these two
+pages before any general-purpose VMM existed.
 
 The IOAPIC's base address is currently hardcoded to the conventional
 `0xfec00000` default every common chipset (including QEMU's q35/i440fx)
@@ -169,7 +171,100 @@ against `build/quin-kernel.elf` with `addr2line` or gdb.
 
 ## Virtual memory (Phase 2)
 
-Not yet implemented — see `docs/ROADMAP.md`.
+### Physical memory manager
+
+`kernel/mm/pmm.c`. A bitmap, one bit per 4KiB frame, built once from
+`boot_get_memmap()`: every bit starts set (in use), and only frames
+inside a `BOOT_MEMMAP_USABLE` region get cleared (free). Anything the
+bootloader didn't call out as usable — reserved, ACPI, MMIO gaps, bad
+memory — is therefore never handed out, with no separate exclusion list
+to maintain.
+
+The bitmap itself is sized off the highest address among only the
+RAM-backed memmap types (usable, bootloader-reclaimable, the kernel's
+own executable-and-modules region). QEMU's memmap also reports a large
+`Reserved` entry for the 64-bit PCIe MMIO window — tens of GiB above any
+real RAM even on a small guest — and an earlier version of this code
+included that in the sizing calculation, producing a bitmap three orders
+of magnitude larger than it needed to be. Worth knowing if you ever see
+`pmm_total_frame_count()` return something wildly larger than the
+machine's actual RAM: check what memmap type is driving `highest_addr`.
+
+Physical page 0 is permanently reserved (never handed out), so a valid
+frame's physical address is never confusable with a null pointer.
+Bootloader-reclaimable memory is deliberately *not* reclaimed — Limine's
+own page tables and other structures live there, and this kernel keeps
+extending those same page tables (see below) rather than building a
+fresh address space, so reclaiming them out from under itself would be a
+use-after-free. A fork that wants that memory back needs to first copy
+out everything it still needs from bootloader-reclaimable regions (the
+memmap itself, the RSDP physical pointer — see Phase 3), build an
+independent set of page tables, switch `CR3` to them, and only then free
+the old ones.
+
+### Virtual memory manager
+
+`kernel/arch/x86_64/mm/vmm.c`. Continues extending the page tables
+Limine already built (walked via `CR3` + HHDM) instead of switching to a
+fresh address space — those tables already correctly map the kernel
+image, HHDM, and the framebuffer, and rebuilding that from scratch would
+just be re-deriving information Limine already computed correctly. New
+page-table pages come from `pmm_alloc_frame`. Intermediate (non-leaf)
+entries are always Present+Writable regardless of what the caller asked
+for; only the leaf PTE encodes the caller's actual `VMM_*` flags — the
+CPU ANDs permissions across all four levels, so a restrictive
+intermediate entry would silently override a more permissive leaf.
+
+Three fixed virtual regions (see the memory layout table above):
+`vmm_map_mmio` for fixed-purpose device MMIO, `vmm_alloc_guarded` for
+guard-page-bounded eager allocations, and `kernel/mm/heap.c`'s own
+16MiB lazy region. All three bump-allocate from their own base address
+and never reclaim virtual address space — acceptable for a kernel that
+never removes a driver or resizes its heap down, not something to build
+on for a use case that does.
+
+### Guard pages
+
+`vmm_alloc_guarded(page_count, flags)` maps `page_count` pages with one
+unmapped page immediately before and after the range, so an off-by-one
+read or write faults immediately instead of silently corrupting a
+neighboring allocation. Verified by deliberately writing one byte past
+a 2-page guarded allocation and confirming `panic_exception` fires with
+`CR2` pointing exactly at the guard page, before removing the trigger —
+same discipline as the Phase 1 panic-path check. Nothing in Phase 2
+itself needs a guarded allocation (the heap uses a plain lazy region,
+not this), but Phase 4's per-thread kernel stacks are the intended
+consumer — stack overflow detection is the classic guard-page use case.
+
+### Page fault handling: real faults vs. lazy mappings
+
+`vmm_handle_page_fault`, registered against IDT vector 14 by
+`vmm_init`. Consults error-code bit 0 first (SDM Vol. 3A, 4.7): a set
+bit means the page *was* present and this is a permission violation
+(writing read-only memory, executing NX memory) — always a real bug,
+never something to paper over, so it's treated as an unhandled
+exception immediately. A clear bit means not-present, which is only
+interesting if the faulting address falls inside a region some
+subsystem registered with `vmm_register_lazy_region`: if so, a fresh
+frame is allocated and mapped with that region's flags and the faulting
+instruction transparently retries; if not, it's a real fault (wild
+pointer, stack overflow into unmapped guard space, etc.) and falls
+through to `panic_exception`.
+
+`kernel/mm/heap.c` is the only current lazy-region consumer: its 16MiB
+virtual range is registered but never eagerly mapped, so the very first
+write in `heap_init` (initializing the first free-list block's header)
+is what faults in the heap's first physical page, through this exact
+path.
+
+### Kernel heap
+
+`kernel/mm/heap.c`. A doubly-linked, first-fit, splitting-and-coalescing
+allocator over the lazy heap region above — the classic "block header
+before each allocation" design, not a slab or size-class allocator.
+O(n) in the number of live blocks, which is the right trade for a
+template kernel's allocation traffic against how much simpler it is to
+read than a production design.
 
 ## Platform services (Phase 3)
 

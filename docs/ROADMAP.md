@@ -21,8 +21,12 @@ smoke test.
       register dump + stack trace. Verified by deliberately triggering
       `#BP` (`int3`) and confirming the panic screen renders correctly on
       both serial and framebuffer before removing the trigger.
-- [ ] **Phase 2 — Memory management**: bitmap PMM, 4-level paging VMM with
-      guard pages, kernel heap, page fault handler.
+- [x] **Phase 2 — Memory management**: bitmap PMM, 4-level paging VMM with
+      guard pages and lazy regions, kernel heap, page fault handler that
+      distinguishes real faults from lazy-mapping opportunities. Verified
+      by exercising `kmalloc`/`kfree` (including the lazy-fault path) and
+      by deliberately writing past a guarded allocation and confirming
+      the panic fires with `CR2` pointing at the guard page.
 - [ ] **Phase 3 — Platform services**: ACPI table parsing, LAPIC timer
       calibration, leveled logger, PS/2 keyboard driver.
 - [ ] **Phase 4 — Concurrency skeleton**: kernel threads, round-robin
@@ -67,10 +71,25 @@ smoke test.
   addresses are printed raw; there's no kernel-side symbol table to turn
   them into function names. Cross-reference against
   `build/quin-kernel.elf` with `addr2line` or gdb.
-- **`kernel/arch/x86_64/mm/early_map.c`** (Phase 1): a deliberately
-  minimal, hand-rolled page-table editor that exists only to reach the
-  LAPIC/IOAPIC MMIO pages before Phase 2's real VMM exists. Not a general
-  mapping API — don't extend it; Phase 2's `vmm_map` replaces it.
+- **Bootloader-reclaimable memory is never reclaimed** (Phase 2): the
+  PMM permanently excludes it, since Limine's own page tables live there
+  and this kernel keeps extending those tables rather than building an
+  independent address space (see `docs/ARCHITECTURE.md`, "Physical
+  memory manager"). Reclaiming it safely needs a fork's own address
+  space first. On a small guest this is a few hundred KiB to a few MiB
+  left on the table, not a correctness problem.
+- **`vmm_alloc_guarded` leaks frames on partial failure** (Phase 2): if
+  the PMM runs out of frames partway through a multi-page guarded
+  allocation, the pages already mapped in that call are not freed. No
+  caller currently allocates more than a couple of pages at a time, so
+  this hasn't mattered in practice, but a real consumer (e.g. Phase 4
+  sizing a kernel stack) should get a rollback path before relying on
+  allocation failure being recoverable.
+- **The kernel heap has a fixed 16MiB ceiling** (Phase 2): `kmalloc`
+  returns `NULL` once the reserved lazy region is exhausted; there's no
+  growth path (extending the reserved virtual range, or falling back to
+  a second region). Fine for a template kernel's own allocation volume,
+  a real limitation for anything heap-heavy.
 - **SMP**: `kernel/arch/x86_64/cpu` brings up the boot processor (BSP) only.
   Application processor (AP) bring-up via the MADT's LAPIC entries, the
   INIT-SIPI-SIPI sequence, and per-CPU scheduler runqueues are not

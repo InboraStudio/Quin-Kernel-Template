@@ -21,10 +21,7 @@ cd "$(quin_repo_root)"
 QEMU_ONLY=0
 [[ "${1:-}" == "--qemu-only" ]] && QEMU_ONLY=1
 
-if [[ ! -f build/quin-kernel.iso ]]; then
-    printf '[debug] build/quin-kernel.iso not found, building it first.\n'
-    ./scripts/build.sh
-fi
+./scripts/build.sh
 
 OVMF_CODE="$(quin_find_ovmf_code)" || {
     printf '[debug] could not find OVMF firmware. Run ./scripts/setup-toolchain.sh.\n' >&2

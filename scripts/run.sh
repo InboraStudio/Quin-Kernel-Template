@@ -18,10 +18,7 @@ cd "$(quin_repo_root)"
 
 MODE="${1:-interactive}"
 
-if [[ ! -f build/quin-kernel.iso ]]; then
-    printf '[run] build/quin-kernel.iso not found, building it first.\n'
-    ./scripts/build.sh
-fi
+./scripts/build.sh
 
 OVMF_CODE="$(quin_find_ovmf_code)" || {
     printf '[run] could not find OVMF firmware. Run ./scripts/setup-toolchain.sh.\n' >&2

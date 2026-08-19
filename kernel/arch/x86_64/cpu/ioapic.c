@@ -1,6 +1,6 @@
 #include "ioapic.h"
 
-#include "arch/x86_64/mm/early_map.h"
+#include "arch/x86_64/mm/vmm.h"
 #include "kernel.h"
 
 /* OSDev Wiki: https://wiki.osdev.org/IOAPIC. 0xfec00000 is the
@@ -32,7 +32,7 @@ static void ioapic_write(uint32_t reg, uint32_t value) {
 }
 
 void ioapic_init(void) {
-    ioapic_base = (volatile uint32_t *)early_map_mmio(IOAPIC_PHYS_BASE);
+    ioapic_base = (volatile uint32_t *)vmm_map_mmio(IOAPIC_PHYS_BASE);
 
     uint32_t version = ioapic_read(IOAPIC_REG_VERSION);
     uint32_t max_entry = (version >> 16) & 0xff;

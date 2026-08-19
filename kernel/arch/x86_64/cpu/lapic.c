@@ -1,6 +1,6 @@
 #include "lapic.h"
 
-#include "arch/x86_64/mm/early_map.h"
+#include "arch/x86_64/mm/vmm.h"
 #include "io.h"
 #include "kernel.h"
 
@@ -44,7 +44,7 @@ void lapic_init(void) {
     uint64_t phys_base = apic_base_msr & APIC_BASE_ADDR_MASK;
     wrmsr(IA32_APIC_BASE_MSR, apic_base_msr | APIC_BASE_ENABLE);
 
-    lapic_base = (volatile uint32_t *)early_map_mmio(phys_base);
+    lapic_base = (volatile uint32_t *)vmm_map_mmio(phys_base);
 
     lapic_write(LAPIC_REG_LVT_TIMER, LAPIC_LVT_MASKED);
     lapic_write(LAPIC_REG_LVT_LINT0, LAPIC_LVT_MASKED);

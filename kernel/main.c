@@ -7,9 +7,12 @@
 #include "arch/x86_64/cpu/io.h"
 #include "arch/x86_64/cpu/ioapic.h"
 #include "arch/x86_64/cpu/lapic.h"
-#include "arch/x86_64/mm/early_map.h"
+#include "arch/x86_64/mm/vmm.h"
 #include "drivers/framebuffer/framebuffer.h"
 #include "drivers/serial/serial.h"
+#include "lib/printf.h"
+#include "mm/heap.h"
+#include "mm/pmm.h"
 
 static const char *const banner =
     " /$$$$$$            /$$\n"
@@ -21,6 +24,18 @@ static const char *const banner =
     "|  $$$$$$/|  $$$$$$/| $$| $$  | $$\n"
     " \\____ $$$ \\______/ |__/|__/  |__/\n"
     "      \\__/\n";
+
+static void serial_emit(void *ctx, char c) {
+    (void)ctx;
+    serial_putc(c);
+}
+
+static void serial_printf(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    kvprintf(serial_emit, NULL, fmt, ap);
+    va_end(ap);
+}
 
 void kmain(void) {
     serial_init();
@@ -35,7 +50,11 @@ void kmain(void) {
 
     gdt_init();
     idt_init();
-    early_map_init();
+
+    pmm_init();
+    vmm_init();
+    heap_init();
+
     lapic_init();
     ioapic_init();
     io_enable_interrupts();
@@ -43,6 +62,8 @@ void kmain(void) {
     serial_write(banner);
     serial_write("Quin Kernel Template -- Inbora Studio\n");
     serial_write("booted via Limine (UEFI)\n");
+    serial_printf("mm: %lu/%lu frames free (%lu MiB)\n", pmm_free_frame_count(),
+                  pmm_total_frame_count(), (pmm_free_frame_count() * PAGE_SIZE) / (1024 * 1024));
     if (have_fb) {
         fb_console_write(banner, FB_GREEN, FB_BLACK);
         fb_console_write("Quin Kernel Template -- Inbora Studio\n", FB_WHITE, FB_BLACK);

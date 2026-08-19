@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-/* Requires early_map_init() to have already run (kernel/arch/x86_64/mm/early_map.h) --
- * this maps the LAPIC's MMIO page through it. */
+/* Requires vmm_init() (and, transitively, pmm_init()) to have already
+ * run -- this maps the LAPIC's MMIO page through vmm_map_mmio. */
 void lapic_init(void);
 
 void lapic_send_eoi(void);

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Requires early_map_init() to have already run. Masks every redirection
+/* Requires vmm_init() to have already run. Masks every redirection
  * entry; nothing is routed until ioapic_set_irq is called. */
 void ioapic_init(void);
 
